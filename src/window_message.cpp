@@ -708,8 +708,35 @@ void Window_Message::UpdateMessage() {
 				text32 += tret.ch;
 			}
 
-			shape_ret = page_font->Shape(text32);
-			continue;
+shape_ret = page_font->Shape(text32);
+
+// Experimental Arabic RTL alignment.
+// HarfBuzz shapes the Arabic glyphs; start Arabic lines
+// from the right edge of the message contents.
+auto contains_arabic = [](std::u32string_view value) {
+for (char32_t c : value) {
+if ((c >= 0x0600 && c <= 0x06FF) ||
+(c >= 0x0750 && c <= 0x077F) ||
+(c >= 0x08A0 && c <= 0x08FF) ||
+(c >= 0xFB50 && c <= 0xFDFF) ||
+(c >= 0xFE70 && c <= 0xFEFF)) {
+return true;
+}
+}
+return false;
+};
+
+if (contains_arabic(text32)) {
+int shaped_width = 0;
+
+for (const auto& glyph : shape_ret) {
+shaped_width += glyph.advance.x;
+}
+
+contents_x = contents->GetWidth() - shaped_width;
+}
+
+continue;
 		} else {
 			if (!DrawGlyph(*page_font, *system, ch, false)) {
 				text_index = text_prev;
