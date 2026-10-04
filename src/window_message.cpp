@@ -19,6 +19,8 @@
 #include <cctype>
 #include <sstream>
 #include <iterator>
+#include <vector>
+#include <unicode/ubidi.h>
 
 #include "compiler.h"
 #include "input_buttons.h"
@@ -708,11 +710,8 @@ void Window_Message::UpdateMessage() {
 				text32 += tret.ch;
 			}
 
-shape_ret = page_font->Shape(text32);
-
-// Experimental Arabic RTL alignment.
-// HarfBuzz shapes the Arabic glyphs; start Arabic lines
-// from the right edge of the message contents.
+// Arabic-script detection. Latin-only text keeps the
+// original EasyRPG shaping path unchanged.
 auto contains_arabic = [](std::u32string_view value) {
 for (char32_t c : value) {
 if ((c >= 0x0600 && c <= 0x06FF) ||
@@ -727,13 +726,126 @@ return false;
 };
 
 if (contains_arabic(text32)) {
+// Convert UTF-32 to UTF-16 for ICU BiDi.
+std::vector<UChar> text16;
+text16.reserve(text32.size());
+
+for (char32_t c : text32) {
+if (c <= 0xFFFF) {
+text16.push_back(static_cast<UChar>(c));
+} else {
+uint32_t cp = static_cast<uint32_t>(c) - 0x10000;
+text16.push_back(static_cast<UChar>(0xD800 + (cp >> 10)));
+text16.push_back(static_cast<UChar>(0xDC00 + (cp & 0x3FF)));
+}
+}
+
+UErrorCode bidi_status = U_ZERO_ERROR;
+UBiDi* bidi = ubidi_openSized(
+static_cast<int32_t>(text16.size()),
+0,
+&bidi_status
+);
+
+shape_ret.clear();
+
+if (U_SUCCESS(bidi_status) && bidi) {
+// Force RTL paragraph direction for Arabic-script dialogue.
+ubidi_setPara(
+bidi,
+text16.data(),
+static_cast<int32_t>(text16.size()),
+1,
+nullptr,
+&bidi_status
+);
+
+if (U_SUCCESS(bidi_status)) {
+int32_t run_count = ubidi_countRuns(bidi, &bidi_status);
+
+if (U_SUCCESS(bidi_status)) {
+// ICU returns runs in visual left-to-right order.
+for (int32_t visual_run = 0;
+ visual_run < run_count;
+ ++visual_run) {
+int32_t logical_start = 0;
+int32_t run_length = 0;
+
+UBiDiDirection run_direction =
+ubidi_getVisualRun(
+bidi,
+visual_run,
+&logical_start,
+&run_length
+);
+
+std::u32string run32;
+
+int32_t i = logical_start;
+const int32_t run_end =
+logical_start + run_length;
+
+while (i < run_end) {
+uint32_t cp = text16[i++];
+
+if (cp >= 0xD800 &&
+cp <= 0xDBFF &&
+i < run_end) {
+uint32_t low = text16[i];
+
+if (low >= 0xDC00 &&
+low <= 0xDFFF) {
+++i;
+cp =
+0x10000 +
+((cp - 0xD800) << 10) +
+(low - 0xDC00);
+}
+}
+
+run32.push_back(
+static_cast<char32_t>(cp)
+);
+}
+
+auto shaped_run = page_font->Shape(
+run32,
+run_direction == UBIDI_RTL
+? Font::ShapeDirection::RTL
+: Font::ShapeDirection::LTR
+);
+
+shape_ret.insert(
+shape_ret.end(),
+shaped_run.begin(),
+shaped_run.end()
+);
+}
+}
+}
+
+ubidi_close(bidi);
+}
+
+// Safe fallback if ICU failed for any reason.
+if (shape_ret.empty()) {
+shape_ret = page_font->Shape(
+text32,
+Font::ShapeDirection::RTL
+);
+}
+
 int shaped_width = 0;
 
 for (const auto& glyph : shape_ret) {
 shaped_width += glyph.advance.x;
 }
 
+// RTL paragraph: anchor to the right side.
 contents_x = contents->GetWidth() - shaped_width;
+} else {
+// Original EasyRPG behavior for Latin and other LTR text.
+shape_ret = page_font->Shape(text32);
 }
 
 continue;
