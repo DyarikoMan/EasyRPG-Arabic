@@ -4,8 +4,9 @@ EasyRPG-Arabic is a fork of EasyRPG Player focused on making it practical
 to create and translate RPG Maker 2000/2003 games in Arabic.
 
 It adds Arabic shaping with HarfBuzz, ICU Unicode BiDi, RTL menus and UI
-layouts, and true RTL dialogue typewriter rendering — Arabic dialogue is
-revealed from right to left. Mixed Arabic, Latin text, and numbers are handled
+layouts, a bundled custom Arabic pixel font with support for custom Arabic-capable
+fonts, and true RTL dialogue typewriter rendering — Arabic dialogue is revealed
+from right to left. Mixed Arabic, Latin text, and numbers are handled
 automatically.
 
 The project also includes tools for translating existing RPG Maker 2000/2003
@@ -48,6 +49,18 @@ For optional widescreen rendering, run:
 ```powershell
 Player.exe --game-resolution widescreen
 ```
+
+## Arabic fonts
+
+EasyRPG-Arabic includes a custom Arabic pixel font originally created by
+**bou33ou** for a Minecraft Arabic localization/resource-pack project, then
+reused and adapted for EasyRPG-Arabic. See the
+[original Minecraft font project](https://modrinth.com/resourcepack/arabic-font).
+
+The bundled font is `Language/ar/Font/Font.ttf`. You can replace it with another
+TTF font that supports Arabic glyphs; the same font can be used for both RPG
+Maker font slots. Arabic fonts can look very different at RPG Maker 2000/2003's
+low resolution, so test your choice in-game.
 
 ## Tutorials
 

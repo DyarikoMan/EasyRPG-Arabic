@@ -1,0 +1,17 @@
+EasyRPG-Arabic Arabic Pixel Font
+
+This Arabic pixel font was created by bou33ou.
+
+It was originally created for a Minecraft Arabic localization/resource-pack
+project and was later reused and adapted for EasyRPG-Arabic.
+
+Original project:
+https://modrinth.com/resourcepack/arabic-font
+
+Copyright © 2026 bou33ou.
+
+No separate redistribution or modification license has been specified for
+this font yet.
+
+For permission to redistribute or modify the font separately from
+EasyRPG-Arabic, please contact the project maintainer.
