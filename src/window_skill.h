@@ -86,6 +86,8 @@ public:
 	void SetSubsetFilter(int subset);
 
 protected:
+	bool IsRtlGridLayout() const override { return true; }
+
 	std::vector<int> data;
 
 	const Game_Actor* actor;

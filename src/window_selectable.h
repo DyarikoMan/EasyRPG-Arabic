@@ -101,6 +101,11 @@ public:
 	void SetSingleColumnWrapping(bool wrap);
 
 protected:
+	/**
+	 * Whether this selectable uses right-to-left column order in Arabic.
+	 */
+	virtual bool IsRtlGridLayout() const { return false; }
+
 	void UpdateArrows();
 
 	Window_Help* help_window = nullptr;

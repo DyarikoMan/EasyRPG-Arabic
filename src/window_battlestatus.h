@@ -80,6 +80,7 @@ protected:
 	 * Redraws the characters time gauge.
 	 */
 	void RefreshGauge();
+	void DrawRtlActorRow(const Game_Battler& actor, int y, bool draw_name_and_state);
 
 	void DrawGaugeSystem2(int x, int y, int cur_value, int max_value, int which);
 	void DrawNumberSystem2(int x, int y, int value);

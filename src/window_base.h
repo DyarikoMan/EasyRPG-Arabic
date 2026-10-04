@@ -59,7 +59,7 @@ public:
 	void DrawActorClass(const Game_Actor& actor, int cx, int cy) const;
 	void DrawActorLevel(const Game_Actor& actor, int cx, int cy) const;
 	void DrawActorState(const Game_Battler& actor, int cx, int cy) const;
-	void DrawActorExp(const Game_Actor& actor, int cx, int cy) const;
+	void DrawActorExp(const Game_Actor& actor, int cx, int cy, bool draw_label = true) const;
 	void DrawActorHp(const Game_Battler& actor, int cx, int cy, int digits, bool draw_max = true) const;
 	void DrawActorSp(const Game_Battler& actor, int cx, int cy, int digits, bool draw_max = true) const;
 	void DrawActorParameter(const Game_Battler& actor, int cx, int cy, int type) const;

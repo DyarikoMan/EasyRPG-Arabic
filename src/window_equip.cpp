@@ -21,6 +21,7 @@
 #include "bitmap.h"
 #include <lcf/reader_util.h>
 #include "output.h"
+#include "translation.h"
 
 Window_Equip::Window_Equip(int ix, int iy, int iwidth, int iheight, const Game_Actor& actor) :
 	Window_Selectable(ix, iy, iwidth, iheight),
@@ -50,10 +51,20 @@ void Window_Equip::Refresh() {
 
 	// Draw equipment text
 	for (int i = 0; i < 5; ++i) {
-		DrawEquipmentType(actor, 0, (12 + 4) * i + 2, i);
+		const int y = (12 + 4) * i + 2;
+		if (Tr::IsRtlLanguage()) {
+			DrawEquipmentType(actor, contents->GetWidth(), y, i);
+		} else {
+			DrawEquipmentType(actor, 0, y, i);
+		}
 		if (data[i] > 0) {
 			// Equipment and items are guaranteed to be valid
-			DrawItemName(*lcf::ReaderUtil::GetElement(lcf::Data::items, data[i]), 60, (12 + 4) * i + 2);
+			const auto* item = lcf::ReaderUtil::GetElement(lcf::Data::items, data[i]);
+			if (Tr::IsRtlLanguage()) {
+				contents->TextDraw(contents->GetWidth() - 60, y, Font::ColorDefault, item->name, Text::AlignRight);
+			} else {
+				DrawItemName(*item, 60, y);
+			}
 		}
 	}
 }

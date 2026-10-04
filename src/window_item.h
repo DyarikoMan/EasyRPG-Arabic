@@ -78,6 +78,9 @@ public:
 	 */
 	void SetActor(Game_Actor* actor);
 
+protected:
+	bool IsRtlGridLayout() const override { return true; }
+
 private:
 	std::vector<int> data;
 

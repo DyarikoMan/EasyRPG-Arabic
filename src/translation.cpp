@@ -71,6 +71,10 @@ std::string Tr::GetCurrentLanguageCode() {
 	return Player::translation.GetCurrentLanguage().lang_code;
 }
 
+bool Tr::IsRtlLanguage() {
+	return GetCurrentTranslationId() == "ar" || GetCurrentLanguageCode().rfind("ar", 0) == 0;
+}
+
 FilesystemView Tr::GetCurrentTranslationFilesystem() {
 	return Player::translation.GetRootTree().Subtree(GetCurrentTranslationId());
 }

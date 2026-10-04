@@ -16,6 +16,7 @@
  */
 
 // Headers
+#include <algorithm>
 #include <iomanip>
 #include <sstream>
 #include "window_actorstatus.h"
@@ -23,6 +24,7 @@
 #include "game_party.h"
 #include "bitmap.h"
 #include "font.h"
+#include "translation.h"
 
 Window_ActorStatus::Window_ActorStatus(int ix, int iy, int iwidth, int iheight, const Game_Actor& actor) :
 	Window_Base(ix, iy, iwidth, iheight),
@@ -40,6 +42,28 @@ void Window_ActorStatus::Refresh() {
 }
 
 void Window_ActorStatus::DrawStatus() {
+	if (Tr::IsRtlLanguage()) {
+		const Font& draw_font = *(font ? font : Font::Default());
+		const int label_right = contents->GetWidth() - 2;
+		auto draw_value = [&](std::string_view label, int cy, std::string value, int color) {
+			const int label_width = Text::GetSize(draw_font, label).width;
+			const int value_width = Text::GetSize(draw_font, value).width;
+			const int value_x = std::max(0, label_right - label_width - 8 - value_width);
+			contents->TextDraw(label_right, cy, 1, label, Text::AlignRight);
+			contents->TextDraw(value_x, cy, color, value, Text::AlignLeft);
+		};
+
+		draw_value(lcf::Data::terms.health_points, 2,
+			std::to_string(actor.GetHp()) + " / " + std::to_string(actor.GetMaxHp()),
+			GetValueFontColor(actor.GetHp(), actor.GetMaxHp(), true));
+		draw_value(lcf::Data::terms.spirit_points, 18,
+			std::to_string(actor.GetSp()) + " / " + std::to_string(actor.GetMaxSp()),
+			GetValueFontColor(actor.GetSp(), actor.GetMaxSp(), false));
+		draw_value(lcf::Data::terms.exp_short, 34,
+			actor.GetExpString(true) + " / " + actor.GetNextExpString(true), Font::ColorDefault);
+		return;
+	}
+
 	int have, max;
 	auto fontcolor = [&have, &max](bool can_knockout) {
 		if (can_knockout && have == 0) return Font::ColorKnockout;

@@ -30,6 +30,7 @@
 #include "output.h"
 #include "window_battlestatus.h"
 #include "feature.h"
+#include "translation.h"
 
 Window_BattleStatus::Window_BattleStatus(int ix, int iy, int iwidth, int iheight, bool enemy) :
 	Window_Selectable(ix, iy, iwidth, iheight), mode(ChoiceMode_All), enemy(enemy) {
@@ -63,6 +64,7 @@ Window_BattleStatus::Window_BattleStatus(int ix, int iy, int iwidth, int iheight
 
 void Window_BattleStatus::Refresh() {
 	contents->Clear();
+	const bool rtl = Tr::IsRtlLanguage();
 
 	if (enemy) {
 		item_max = Main_Data::game_enemyparty->GetBattlerCount();
@@ -89,14 +91,19 @@ void Window_BattleStatus::Refresh() {
 		else {
 			int y = menu_item_height / 8 + i * menu_item_height;
 
-			DrawActorName(*actor, 4, y);
-			if (Feature::HasRpg2kBattleSystem()) {
+			if (rtl) {
+				DrawRtlActorRow(*actor, y, true);
+			} else {
+				DrawActorName(*actor, 4, y);
+			}
+			if (!rtl && Feature::HasRpg2kBattleSystem()) {
 				int hpdigits = (actor->MaxHpValue() >= 1000) ? 4 : 3;
 				int spdigits = (actor->MaxSpValue() >= 1000) ? 4 : 3;
-				DrawActorState(*actor, (hpdigits < 4 && spdigits < 4) ? 86 : 80, y);
+				const int state_x = (hpdigits < 4 && spdigits < 4) ? 86 : 80;
+				DrawActorState(*actor, state_x, y);
 				DrawActorHp(*actor, 178 - hpdigits * 6 - spdigits * 6, y, hpdigits, true);
 				DrawActorSp(*actor, 220 - spdigits * 6, y, spdigits, false);
-			} else {
+			} else if (!rtl) {
 				if (lcf::Data::battlecommands.battle_type == lcf::rpg::BattleCommands::BattleType_traditional) {
 					DrawActorState(*actor, 84, y);
 					DrawActorHpValue(*actor, 136 + 4 * 6, y);
@@ -108,6 +115,41 @@ void Window_BattleStatus::Refresh() {
 	}
 
 	RefreshGauge();
+}
+
+void Window_BattleStatus::DrawRtlActorRow(const Game_Battler& actor, int y, bool draw_name_and_state) {
+	const Font& draw_font = *(font ? font : Font::Default());
+	const int gap = 4;
+	const int right_edge = contents->GetWidth() - 4;
+	const std::string_view name = actor.GetName();
+	const int name_width = Text::GetSize(draw_font, name).width;
+	const lcf::rpg::State* state = actor.GetSignificantState();
+	const std::string_view state_name = state ? std::string_view(state->name) : std::string_view(lcf::Data::terms.normal_status);
+	const int state_width = Text::GetSize(draw_font, state_name).width;
+
+	int right = right_edge;
+	if (draw_name_and_state) {
+		contents->TextDraw(right, y, Font::ColorDefault, name, Text::AlignRight);
+	}
+	right -= name_width + gap;
+	if (draw_name_and_state) {
+		contents->TextDraw(right, y, state ? state->color : Font::ColorDefault, state_name, Text::AlignRight);
+	}
+	right -= state_width + gap;
+
+	if (Feature::HasRpg2kBattleSystem()) {
+		const std::string hp_text = std::to_string(actor.GetHp()) + "/" + std::to_string(actor.GetMaxHp());
+		const int hp_width = Text::GetSize(draw_font, hp_text).width
+			+ Text::GetSize(draw_font, lcf::Data::terms.hp_short).width + gap;
+		const std::string sp_text = std::to_string(actor.GetSp());
+		const int sp_width = Text::GetSize(draw_font, sp_text).width
+			+ Text::GetSize(draw_font, lcf::Data::terms.sp_short).width + gap;
+		DrawActorHp(actor, right, y, actor.MaxHpValue() >= 1000 ? 4 : 3, true);
+		right -= hp_width + gap;
+		DrawActorSp(actor, right, y, actor.MaxSpValue() >= 1000 ? 4 : 3, false);
+	} else if (lcf::Data::battlecommands.battle_type == lcf::rpg::BattleCommands::BattleType_traditional) {
+		DrawActorHpValue(actor, right, y);
+	}
 }
 
 void Window_BattleStatus::RefreshGauge() {
@@ -179,8 +221,12 @@ void Window_BattleStatus::RefreshGauge() {
 					}
 					int hpdigits = (actor->MaxHpValue() >= 1000) ? 4 : 3;
 					int spdigits = (actor->MaxSpValue() >= 1000) ? 4 : 3;
-					DrawActorHp(*actor, 178 - hpdigits * 6 - spdigits * 6, y, hpdigits, true);
-					DrawActorSp(*actor, 220 - spdigits * 6, y, spdigits, false);
+					if (Tr::IsRtlLanguage()) {
+						DrawRtlActorRow(*actor, y, false);
+					} else {
+						DrawActorHp(*actor, 178 - hpdigits * 6 - spdigits * 6, y, hpdigits, true);
+						DrawActorSp(*actor, 220 - spdigits * 6, y, spdigits, false);
+					}
 				} else {
 					DrawGauge(*actor, 156, y - 2);
 				}

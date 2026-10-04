@@ -24,6 +24,7 @@
 #include "output.h"
 #include <lcf/reader_util.h>
 #include "sprite_character.h"
+#include "translation.h"
 
 Window_ShopParty::Window_ShopParty(int ix, int iy, int iwidth, int iheight) :
 	Window_Base(ix, iy, iwidth, iheight) {
@@ -123,6 +124,7 @@ static bool IsEquipment(const lcf::rpg::Item* item) {
 
 void Window_ShopParty::Refresh() {
 	contents->Clear();
+	const bool rtl = Tr::IsRtlLanguage();
 
 	BitmapRef system = Cache::SystemOrBlack();
 
@@ -141,8 +143,9 @@ void Window_ShopParty::Refresh() {
 		bool usable = item_id == 0 || actor->IsEquippable(item_id);
 		BitmapRef bm = bitmaps[i][usable ? phase : 1][usable ? 1 : 0];
 
+		const int actor_slot = rtl ? 3 - i : i;
 		if (bm) {
-			contents->Blit(i * 32, 0, *bm, bm->GetRect(), 255);
+			contents->Blit(actor_slot * 32, 0, *bm, bm->GetRect(), 255);
 		}
 
 		const auto* new_item = lcf::ReaderUtil::GetElement(lcf::Data::items, item_id);
@@ -163,17 +166,17 @@ void Window_ShopParty::Refresh() {
 				}
 			}
 			if (is_equipped)
-				contents->Blit(i * 32 + 20, 24, *system, Rect(128 + 8 * phase, 24, 8, 8), 255);
+				contents->Blit(actor_slot * 32 + 20, 24, *system, Rect(128 + 8 * phase, 24, 8, 8), 255);
 			else {
 				int cmp = CmpEquip(actor, new_item);
 				if (cmp > 0) {
-					contents->Blit(i * 32 + 20, 24, *system, Rect(128 + 8 * phasecmp, 0, 8, 8), 255);
+					contents->Blit(actor_slot * 32 + 20, 24, *system, Rect(128 + 8 * phasecmp, 0, 8, 8), 255);
 				}
 				else if (cmp < 0) {
-					contents->Blit(i * 32 + 20, 24, *system, Rect(128 + 8 * phasecmp, 16, 8, 8), 255);
+					contents->Blit(actor_slot * 32 + 20, 24, *system, Rect(128 + 8 * phasecmp, 16, 8, 8), 255);
 				}
 				else {
-					contents->Blit(i * 32 + 20, 24, *system, Rect(128 + 8 * phasecmp, 8, 8, 8), 255);
+					contents->Blit(actor_slot * 32 + 20, 24, *system, Rect(128 + 8 * phasecmp, 8, 8, 8), 255);
 				}
 			}
 		}

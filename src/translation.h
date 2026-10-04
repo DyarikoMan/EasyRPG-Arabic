@@ -62,6 +62,11 @@ namespace Tr {
 	std::string GetCurrentLanguageCode();
 
 	/**
+	 * @return Whether the active translation uses a right-to-left layout.
+	 */
+	bool IsRtlLanguage();
+
+	/**
 	 * @return The directory tree of the active translation.
 	 */
 	FilesystemView GetCurrentTranslationFilesystem();

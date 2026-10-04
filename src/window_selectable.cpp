@@ -21,6 +21,7 @@
 #include "input.h"
 #include "util_macro.h"
 #include "bitmap.h"
+#include "translation.h"
 
 constexpr int arrow_animation_frames = 20;
 
@@ -74,7 +75,11 @@ int Window_Selectable::GetPageItemMax() {
 Rect Window_Selectable::GetItemRect(int index) {
 	Rect rect = Rect();
 	rect.width = (width / column_max - 16);
-	rect.x = (index % column_max * (rect.width + 16));
+	const int logical_column = index % column_max;
+	const int visual_column = Tr::IsRtlLanguage() && IsRtlGridLayout() && column_max > 1
+		? column_max - 1 - logical_column
+		: logical_column;
+	rect.x = (visual_column * (rect.width + 16));
 	rect.height = menu_item_height - 4;
 	rect.y = index / column_max * menu_item_height + menu_item_height / 8;
 	return rect;
@@ -99,8 +104,6 @@ void Window_Selectable::UpdateHelp() {
 
 // Update Cursor Rect
 void Window_Selectable::UpdateCursorRect() {
-	int cursor_width = 0;
-	int x = 0;
 	if (index < 0) {
 		SetCursorRect(Rect());
 		return;
@@ -112,8 +115,12 @@ void Window_Selectable::UpdateCursorRect() {
 		SetTopRow(row - (GetPageRowMax() - 1));
 	}
 
-	cursor_width = (width / column_max - 16) + 8;
-	x = (index % column_max * (cursor_width + 8)) - 4;
+	const int cursor_width = (width / column_max - 16) + 8;
+	const int logical_column = index % column_max;
+	const int visual_column = Tr::IsRtlLanguage() && IsRtlGridLayout() && column_max > 1
+		? column_max - 1 - logical_column
+		: logical_column;
+	const int x = (visual_column * (cursor_width + 8)) - 4;
 
 	int y = index / column_max * menu_item_height - oy;
 	SetCursorRect(Rect(x, y, cursor_width, menu_item_height));
@@ -195,13 +202,24 @@ void Window_Selectable::Update() {
 			}
 		}
 		if (Input::IsRepeated(Input::RIGHT)) {
-			if (column_max >= wrap_limit && index < item_max - 1) {
+			if (Tr::IsRtlLanguage() && IsRtlGridLayout() && column_max > 1 && column_max >= wrap_limit) {
+				if (index % column_max > 0) {
+					Main_Data::game_system->SePlay(Main_Data::game_system->GetSystemSE(Main_Data::game_system->SFX_Cursor));
+					index -= 1;
+				}
+			} else if (column_max >= wrap_limit && index < item_max - 1) {
 				Main_Data::game_system->SePlay(Main_Data::game_system->GetSystemSE(Main_Data::game_system->SFX_Cursor));
 				index += 1;
 			}
 		}
 		if (Input::IsRepeated(Input::LEFT)) {
-			if (column_max >= wrap_limit && index > 0) {
+			if (Tr::IsRtlLanguage() && IsRtlGridLayout() && column_max > 1 && column_max >= wrap_limit) {
+				const int row_end = std::min((index / column_max + 1) * column_max, item_max);
+				if (index % column_max + 1 < column_max && index + 1 < row_end) {
+					Main_Data::game_system->SePlay(Main_Data::game_system->GetSystemSE(Main_Data::game_system->SFX_Cursor));
+					index += 1;
+				}
+			} else if (column_max >= wrap_limit && index > 0) {
 				Main_Data::game_system->SePlay(Main_Data::game_system->GetSystemSE(Main_Data::game_system->SFX_Cursor));
 				index -= 1;
 			}

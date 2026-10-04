@@ -25,6 +25,7 @@
 #include <lcf/reader_util.h>
 #include "game_battle.h"
 #include "output.h"
+#include "translation.h"
 
 Window_Item::Window_Item(int ix, int iy, int iwidth, int iheight) :
 	Window_Selectable(ix, iy, iwidth, iheight) {
@@ -122,10 +123,16 @@ void Window_Item::DrawItem(int index) {
 	}
 
 	bool enabled = CheckEnable(item_id);
-	DrawItemName(*item, rect.x, rect.y, enabled);
 
 	Font::SystemColor color = enabled ? Font::ColorDefault : Font::ColorDisabled;
-	contents->TextDraw(rect.x + rect.width - 24, rect.y, color, fmt::format("{}{:3d}", lcf::rpg::Terms::TermOrDefault(lcf::Data::terms.easyrpg_item_number_separator, ":"), number));
+	if (Tr::IsRtlLanguage()) {
+		contents->TextDraw(rect.x + rect.width, rect.y, color, item->name, Text::AlignRight);
+		contents->TextDraw(rect.x, rect.y, color,
+			fmt::format("{}{:3d}", lcf::rpg::Terms::TermOrDefault(lcf::Data::terms.easyrpg_item_number_separator, ":"), number));
+	} else {
+		DrawItemName(*item, rect.x, rect.y, enabled);
+		contents->TextDraw(rect.x + rect.width - 24, rect.y, color, fmt::format("{}{:3d}", lcf::rpg::Terms::TermOrDefault(lcf::Data::terms.easyrpg_item_number_separator, ":"), number));
+	}
 }
 
 

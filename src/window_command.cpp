@@ -48,28 +48,15 @@ void Window_Command::Refresh() {
 }
 
 void Window_Command::DrawItem(int index, Font::SystemColor color) {
-contents->ClearRect(Rect(0, menu_item_height * index, contents->GetWidth(), menu_item_height));
+	contents->ClearRect(Rect(0, menu_item_height * index, contents->GetWidth(), menu_item_height));
 
-const auto language_id = Tr::GetCurrentTranslationId();
-const auto language_code = Tr::GetCurrentLanguageCode();
+	const int y = menu_item_height * index + menu_item_height / 8;
 
-const bool arabic_translation =
-language_id == "ar" ||
-language_code.rfind("ar", 0) == 0;
-
-const int y = menu_item_height * index + menu_item_height / 8;
-
-if (arabic_translation) {
-contents->TextDraw(
-contents->GetWidth(),
-y,
-color,
-commands[index],
-Text::AlignRight
-);
-} else {
-contents->TextDraw(0, y, color, commands[index]);
-}
+	if (Tr::IsRtlLanguage()) {
+		contents->TextDraw(contents->GetWidth(), y, color, commands[index], Text::AlignRight);
+	} else {
+		contents->TextDraw(0, y, color, commands[index]);
+	}
 }
 
 void Window_Command::DisableItem(int i) {

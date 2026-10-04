@@ -55,12 +55,21 @@ void Window_Help::Clear() {
 }
 
 void Window_Help::AddText(std::string text, int color, Text::Alignment align, bool halfwidthspace) {
-	const auto language_id = Tr::GetCurrentTranslationId();
-	const auto language_code = Tr::GetCurrentLanguageCode();
-	const bool arabic_translation = language_id == "ar" || language_code.rfind("ar", 0) == 0;
-
-	if (arabic_translation) {
-		const auto offset = contents->TextDraw(text_x_offset, 2, color, text, align);
+	if (Tr::IsRtlLanguage()) {
+		const auto text_width = Text::GetSize(*(font ? font : Font::Default()), text).width;
+		int draw_left = contents->GetWidth() - text_width;
+		if (animation == Animation::BackAndForth) {
+			draw_left -= text_x_offset;
+		} else {
+			draw_left += text_x_offset;
+		}
+		int draw_x = draw_left;
+		if (align == Text::AlignCenter) {
+			draw_x += text_width / 2;
+		} else if (align == Text::AlignRight) {
+			draw_x += text_width;
+		}
+		const auto offset = contents->TextDraw(draw_x, 2, color, text, align);
 		text_x_offset += offset.x;
 		return;
 	}

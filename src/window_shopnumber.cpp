@@ -24,6 +24,7 @@
 #include "bitmap.h"
 #include "font.h"
 #include <lcf/reader_util.h>
+#include "translation.h"
 
 Window_ShopNumber::Window_ShopNumber(int ix, int iy, int iwidth, int iheight) :
 	Window_Base(ix, iy, iwidth, iheight),
@@ -44,18 +45,27 @@ void Window_ShopNumber::Refresh() {
 	contents->Clear();
 
 	int y = 34;
+	const bool rtl = Tr::IsRtlLanguage();
 	// (Shop) items are guaranteed to be valid
-	DrawItemName(*lcf::ReaderUtil::GetElement(lcf::Data::items, item_id), 0, y);
+	const auto* item = lcf::ReaderUtil::GetElement(lcf::Data::items, item_id);
+	if (rtl) {
+		contents->TextDraw(contents->GetWidth(), y, Font::ColorDefault, item->name, Text::AlignRight);
+	} else {
+		DrawItemName(*item, 0, y);
+	}
 
 	std::stringstream ss;
 	ss << number;
 
-	contents->TextDraw(132, y, Font::ColorDefault, "x");
-	contents->TextDraw(132 + 30, y, Font::ColorDefault, ss.str(), Text::AlignRight);
+	const int quantity_x = rtl ? contents->GetWidth() - 162 : 132;
+	contents->TextDraw(quantity_x, y, Font::ColorDefault, "x");
+	contents->TextDraw(quantity_x + 30, y, Font::ColorDefault, ss.str(), Text::AlignRight);
 	if (item_max >= 100) {
-		SetCursorRect(Rect(132 + 8, y - 2, 26, 16));
+		const Rect original(132 + 8, y - 2, 26, 16);
+		SetCursorRect(rtl ? Rect(contents->GetWidth() - original.x - original.width, original.y, original.width, original.height) : original);
 	} else {
-		SetCursorRect(Rect(132 + 14, y - 2, 20, 16));
+		const Rect original(132 + 14, y - 2, 20, 16);
+		SetCursorRect(rtl ? Rect(contents->GetWidth() - original.x - original.width, original.y, original.width, original.height) : original);
 	}
 
 	DrawCurrencyValue(GetTotal(), contents->GetWidth(), y + 32);

@@ -25,6 +25,7 @@
 #include "window_shop.h"
 #include "bitmap.h"
 #include "font.h"
+#include "translation.h"
 
 Window_Shop::Window_Shop(int shop_type, int ix, int iy, int iwidth, int iheight) :
 	Window_Base(ix, iy, iwidth, iheight) {
@@ -87,6 +88,9 @@ void Window_Shop::UpdateCursorRect() {
 			x += LeftMargin + FaceSize + RightFaceMargin;
 		}
 		width -= LeftMargin + FaceSize + RightFaceMargin;
+		if (Tr::IsRtlLanguage() && Main_Data::game_system->IsMessageFaceRightPosition()) {
+			width = 248 - RightFaceMargin - x;
+		}
 	}
 
 	Rect rect;
@@ -105,6 +109,7 @@ void Window_Shop::UpdateCursorRect() {
 
 void Window_Shop::Refresh() {
 	contents->Clear();
+	const bool rtl = Tr::IsRtlLanguage();
 
 	int x = 0;
 	if (!Main_Data::game_system->GetMessageFaceName().empty()) {
@@ -118,41 +123,44 @@ void Window_Shop::Refresh() {
 	}
 
 	int idx = 0;
+	const int rtl_right = (!Main_Data::game_system->GetMessageFaceName().empty() && Main_Data::game_system->IsMessageFaceRightPosition())
+		? 248 - RightFaceMargin
+		: contents->GetWidth();
+	auto draw_text = [&](int x, int y, std::string_view text) {
+		contents->TextDraw(rtl ? rtl_right - x : x, y, Font::ColorDefault, text, rtl ? Text::AlignRight : Text::AlignLeft);
+	};
 	switch (mode) {
 		case Scene_Shop::BuySellLeave:
 		case Scene_Shop::BuySellLeave2:
-			contents->TextDraw(x, 2, Font::ColorDefault,
-							   mode == Scene_Shop::BuySellLeave2
-							   ? regreeting
-							   : greeting);
+			draw_text(x, 2, mode == Scene_Shop::BuySellLeave2 ? regreeting : greeting);
 			idx++;
 
-			contents->TextDraw(x + 12, 2 + idx * 16, Font::ColorDefault, buy_msg);
+			draw_text(x + 12, 2 + idx * 16, buy_msg);
 			buy_index = idx++;
 
-			contents->TextDraw(x + 12, 2 + idx * 16, Font::ColorDefault, sell_msg);
+			draw_text(x + 12, 2 + idx * 16, sell_msg);
 			sell_index = idx++;
 
-			contents->TextDraw(x + 12, 2 + idx * 16, Font::ColorDefault, leave_msg);
+			draw_text(x + 12, 2 + idx * 16, leave_msg);
 			leave_index = idx++;
 			break;
 		case Scene_Shop::Buy:
-			contents->TextDraw(x, 2, Font::ColorDefault, buy_select);
+			draw_text(x, 2, buy_select);
 			break;
 		case Scene_Shop::BuyHowMany:
-			contents->TextDraw(x, 2, Font::ColorDefault, buy_number);
+			draw_text(x, 2, buy_number);
 			break;
 		case Scene_Shop::Bought:
-			contents->TextDraw(x, 2, Font::ColorDefault, purchased);
+			draw_text(x, 2, purchased);
 			break;
 		case Scene_Shop::Sell:
-			contents->TextDraw(x, 2, Font::ColorDefault, sell_select);
+			draw_text(x, 2, sell_select);
 			break;
 		case Scene_Shop::SellHowMany:
-			contents->TextDraw(x, 2, Font::ColorDefault, sell_number);
+			draw_text(x, 2, sell_number);
 			break;
 		case Scene_Shop::Sold:
-			contents->TextDraw(x, 2, Font::ColorDefault, sold_msg);
+			draw_text(x, 2, sold_msg);
 			break;
 	}
 

@@ -16,9 +16,11 @@
  */
 
 // Headers
+#include <algorithm>
 #include <iomanip>
 #include <sstream>
 #include "window_base.h"
+#include "translation.h"
 #include "cache.h"
 #include <lcf/data.h>
 #include "game_system.h"
@@ -132,6 +134,18 @@ void Window_Base::DrawActorClass(const Game_Actor& actor, int cx, int cy) const 
 }
 
 void Window_Base::DrawActorLevel(const Game_Actor& actor, int cx, int cy) const {
+	if (Tr::IsRtlLanguage()) {
+		const std::string value = std::to_string(actor.GetLevel());
+		const Font& draw_font = *(font ? font : Font::Default());
+		const int label_width = Text::GetSize(draw_font, lcf::Data::terms.lvl_short).width;
+		const int value_width = Text::GetSize(draw_font, value).width;
+		const int right = std::min(std::max(cx, label_width + value_width + 4), contents->GetWidth());
+		const int value_right = std::max(value_width, right - label_width - 4);
+		contents->TextDraw(right, cy, 1, lcf::Data::terms.lvl_short, Text::AlignRight);
+		contents->TextDraw(value_right, cy, Font::ColorDefault, value, Text::AlignRight);
+		return;
+	}
+
 	// Draw LV-String
 	contents->TextDraw(cx, cy, 1, lcf::Data::terms.lvl_short);
 
@@ -142,6 +156,11 @@ void Window_Base::DrawActorLevel(const Game_Actor& actor, int cx, int cy) const 
 void Window_Base::DrawActorState(const Game_Battler& actor, int cx, int cy) const {
 	// Unit has Normal state if no state is set
 	const lcf::rpg::State* state = actor.GetSignificantState();
+	if (Tr::IsRtlLanguage()) {
+		contents->TextDraw(cx, cy, state ? state->color : Font::ColorDefault,
+			state ? state->name : lcf::Data::terms.normal_status, Text::AlignRight);
+		return;
+	}
 	if (!state) {
 		contents->TextDraw(cx, cy, Font::ColorDefault, lcf::Data::terms.normal_status);
 	} else {
@@ -149,7 +168,23 @@ void Window_Base::DrawActorState(const Game_Battler& actor, int cx, int cy) cons
 	}
 }
 
-void Window_Base::DrawActorExp(const Game_Actor& actor, int cx, int cy) const {
+void Window_Base::DrawActorExp(const Game_Actor& actor, int cx, int cy, bool show_label) const {
+	if (Tr::IsRtlLanguage()) {
+		const Font& draw_font = *(font ? font : Font::Default());
+		const bool draw_label = show_label && actor.MaxExpValue() < 1000000;
+		const std::string value = actor.GetExpString() + "/" + actor.GetNextExpString();
+		const int value_width = Text::GetSize(draw_font, value).width;
+		const int label_width = draw_label ? Text::GetSize(draw_font, lcf::Data::terms.exp_short).width : 0;
+		const int field_width = value_width + (draw_label ? label_width + 4 : 0);
+		const int right = std::min(std::max(cx, field_width), contents->GetWidth());
+		const int value_x = std::max(0, right - field_width);
+		contents->TextDraw(value_x, cy, Font::ColorDefault, value);
+		if (draw_label) {
+			contents->TextDraw(right, cy, 1, lcf::Data::terms.exp_short, Text::AlignRight);
+		}
+		return;
+	}
+
 	// Draw EXP-String
 	int width = 7;
 	if (actor.MaxExpValue() < 1000000) {
@@ -171,6 +206,28 @@ void Window_Base::DrawActorExp(const Game_Actor& actor, int cx, int cy) const {
 }
 
 void Window_Base::DrawActorHp(const Game_Battler& actor, int cx, int cy, int digits, bool draw_max) const {
+	if (Tr::IsRtlLanguage()) {
+		const Font& draw_font = *(font ? font : Font::Default());
+		const std::string current = std::to_string(actor.GetHp());
+		const std::string maximum = std::to_string(actor.GetMaxHp());
+		const int current_width = Text::GetSize(draw_font, current).width;
+		const int slash_width = draw_max ? Text::GetSize(draw_font, "/").width : 0;
+		const int maximum_width = draw_max ? Text::GetSize(draw_font, maximum).width : 0;
+		const int label_width = Text::GetSize(draw_font, lcf::Data::terms.hp_short).width;
+		const int value_width = current_width + slash_width + maximum_width;
+		const int field_width = value_width + 4 + label_width;
+		const int right = std::min(std::max(cx, field_width), contents->GetWidth());
+		const int value_x = std::max(0, right - field_width);
+		const int current_color = GetValueFontColor(actor.GetHp(), actor.GetMaxHp(), true);
+		contents->TextDraw(value_x, cy, current_color, current);
+		if (draw_max) {
+			contents->TextDraw(value_x + current_width, cy, Font::ColorDefault, "/");
+			contents->TextDraw(value_x + current_width + slash_width, cy, Font::ColorDefault, maximum);
+		}
+		contents->TextDraw(right, cy, 1, lcf::Data::terms.hp_short, Text::AlignRight);
+		return;
+	}
+
 	// Draw HP-String
 	contents->TextDraw(cx, cy, 1, lcf::Data::terms.hp_short);
 
@@ -194,6 +251,28 @@ void Window_Base::DrawActorHp(const Game_Battler& actor, int cx, int cy, int dig
 }
 
 void Window_Base::DrawActorSp(const Game_Battler& actor, int cx, int cy, int digits, bool draw_max) const {
+	if (Tr::IsRtlLanguage()) {
+		const Font& draw_font = *(font ? font : Font::Default());
+		const std::string current = std::to_string(actor.GetSp());
+		const std::string maximum = std::to_string(actor.GetMaxSp());
+		const int current_width = Text::GetSize(draw_font, current).width;
+		const int slash_width = draw_max ? Text::GetSize(draw_font, "/").width : 0;
+		const int maximum_width = draw_max ? Text::GetSize(draw_font, maximum).width : 0;
+		const int label_width = Text::GetSize(draw_font, lcf::Data::terms.sp_short).width;
+		const int value_width = current_width + slash_width + maximum_width;
+		const int field_width = value_width + 4 + label_width;
+		const int right = std::min(std::max(cx, field_width), contents->GetWidth());
+		const int value_x = std::max(0, right - field_width);
+		const int current_color = GetValueFontColor(actor.GetSp(), actor.GetMaxSp(), false);
+		contents->TextDraw(value_x, cy, current_color, current);
+		if (draw_max) {
+			contents->TextDraw(value_x + current_width, cy, Font::ColorDefault, "/");
+			contents->TextDraw(value_x + current_width + slash_width, cy, Font::ColorDefault, maximum);
+		}
+		contents->TextDraw(right, cy, 1, lcf::Data::terms.sp_short, Text::AlignRight);
+		return;
+	}
+
 	// Draw SP-String
 	contents->TextDraw(cx, cy, 1, lcf::Data::terms.sp_short);
 
@@ -241,6 +320,18 @@ void Window_Base::DrawActorParameter(const Game_Battler& actor, int cx, int cy, 
 		return;
 	}
 
+	if (Tr::IsRtlLanguage()) {
+		const Font& draw_font = *(font ? font : Font::Default());
+		const std::string value_text = std::to_string(value);
+		const int label_width = Text::GetSize(draw_font, name).width;
+		const int value_width = Text::GetSize(draw_font, value_text).width;
+		const int right = std::min(std::max(cx, label_width + value_width + 8), contents->GetWidth());
+		const int value_right = std::max(value_width, right - label_width - 8);
+		contents->TextDraw(right, cy, 1, name, Text::AlignRight);
+		contents->TextDraw(value_right, cy, Font::ColorDefault, value_text, Text::AlignRight);
+		return;
+	}
+
 	// Draw Term
 	contents->TextDraw(cx, cy, 1, name);
 
@@ -275,7 +366,11 @@ void Window_Base::DrawEquipmentType(const Game_Actor& actor, int cx, int cy, int
 		return;
 	}
 
-	contents->TextDraw(cx, cy, 1, name);
+	if (Tr::IsRtlLanguage()) {
+		contents->TextDraw(cx, cy, 1, name, Text::AlignRight);
+	} else {
+		contents->TextDraw(cx, cy, 1, name);
+	}
 }
 
 void Window_Base::DrawItemName(const lcf::rpg::Item& item, int cx, int cy, bool enabled) const {
@@ -335,11 +430,27 @@ void Window_Base::DrawGauge(const Game_Battler& actor, int cx, int cy, int alpha
 }
 
 void Window_Base::DrawActorHpValue(const Game_Battler& actor, int cx, int cy) const {
-	contents->TextDraw(cx, cy, GetValueFontColor(actor.GetHp(), actor.GetMaxHp(), true), std::to_string(actor.GetHp()), Text::AlignRight);
+	const std::string value = std::to_string(actor.GetHp());
+	if (Tr::IsRtlLanguage()) {
+		const Font& draw_font = *(font ? font : Font::Default());
+		const int width = Text::GetSize(draw_font, value).width;
+		const int right = std::min(std::max(cx, width), contents->GetWidth());
+		contents->TextDraw(right, cy, GetValueFontColor(actor.GetHp(), actor.GetMaxHp(), true), value, Text::AlignRight);
+	} else {
+		contents->TextDraw(cx, cy, GetValueFontColor(actor.GetHp(), actor.GetMaxHp(), true), value, Text::AlignRight);
+	}
 }
 
 void Window_Base::DrawActorSpValue(const Game_Battler& actor, int cx, int cy) const {
-	contents->TextDraw(cx, cy, GetValueFontColor(actor.GetSp(), actor.GetMaxSp(), false), std::to_string(actor.GetSp()), Text::AlignRight);
+	const std::string value = std::to_string(actor.GetSp());
+	if (Tr::IsRtlLanguage()) {
+		const Font& draw_font = *(font ? font : Font::Default());
+		const int width = Text::GetSize(draw_font, value).width;
+		const int right = std::min(std::max(cx, width), contents->GetWidth());
+		contents->TextDraw(right, cy, GetValueFontColor(actor.GetSp(), actor.GetMaxSp(), false), value, Text::AlignRight);
+	} else {
+		contents->TextDraw(cx, cy, GetValueFontColor(actor.GetSp(), actor.GetMaxSp(), false), value, Text::AlignRight);
+	}
 }
 
 int Window_Base::GetValueFontColor(int have, int max, bool can_knockout) const {

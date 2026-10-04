@@ -28,6 +28,7 @@
 #include "output.h"
 #include <lcf/reader_util.h>
 #include "game_battle.h"
+#include "translation.h"
 
 Window_Skill::Window_Skill(int ix, int iy, int iwidth, int iheight) :
 	Window_Selectable(ix, iy, iwidth, iheight), subset(0) {
@@ -82,10 +83,17 @@ void Window_Skill::DrawItem(int index) {
 	bool enabled = CheckEnable(skill_id);
 	Font::SystemColor color = enabled ? Font::ColorDefault : Font::ColorDisabled;
 	int costs = actor->CalculateSkillCost(skill_id);
-	contents->TextDraw(rect.x + rect.width - 24, rect.y, color, fmt::format("{}{:3d}", lcf::rpg::Terms::TermOrDefault(lcf::Data::terms.easyrpg_skill_cost_separator, "-"), costs));
 
 	// Skills are guaranteed to be valid
-	DrawSkillName(*lcf::ReaderUtil::GetElement(lcf::Data::skills, skill_id), rect.x, rect.y, enabled);
+	const auto* skill = lcf::ReaderUtil::GetElement(lcf::Data::skills, skill_id);
+	if (Tr::IsRtlLanguage()) {
+		contents->TextDraw(rect.x + rect.width, rect.y, color, skill->name, Text::AlignRight);
+		contents->TextDraw(rect.x, rect.y, color,
+			fmt::format("{}{:3d}", lcf::rpg::Terms::TermOrDefault(lcf::Data::terms.easyrpg_skill_cost_separator, "-"), costs));
+	} else {
+		contents->TextDraw(rect.x + rect.width - 24, rect.y, color, fmt::format("{}{:3d}", lcf::rpg::Terms::TermOrDefault(lcf::Data::terms.easyrpg_skill_cost_separator, "-"), costs));
+		DrawSkillName(*skill, rect.x, rect.y, enabled);
+	}
 }
 
 void Window_Skill::UpdateHelp() {

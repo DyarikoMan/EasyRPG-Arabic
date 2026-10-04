@@ -35,6 +35,7 @@
 #include "scene_status.h"
 #include "bitmap.h"
 #include "feature.h"
+#include "translation.h"
 
 constexpr int menu_command_width = 88;
 constexpr int gold_window_width = 88;
@@ -47,12 +48,15 @@ Scene_Menu::Scene_Menu(int menu_index) :
 
 void Scene_Menu::Start() {
 	CreateCommandWindow();
+	const bool rtl = Tr::IsRtlLanguage();
+	const int side_x = Player::menu_offset_x + (rtl ? MENU_WIDTH - menu_command_width : 0);
 
 	// Gold Window
-	gold_window.reset(new Window_Gold(Player::menu_offset_x, (Player::screen_height - gold_window_height - Player::menu_offset_y), gold_window_width, gold_window_height));
+	gold_window.reset(new Window_Gold(side_x, (Player::screen_height - gold_window_height - Player::menu_offset_y), gold_window_width, gold_window_height));
 
 	// Status Window
-	menustatus_window.reset(new Window_MenuStatus(Player::menu_offset_x + menu_command_width, Player::menu_offset_y, (MENU_WIDTH - menu_command_width), MENU_HEIGHT));
+	const int status_x = Player::menu_offset_x + (rtl ? 0 : menu_command_width);
+	menustatus_window.reset(new Window_MenuStatus(status_x, Player::menu_offset_y, (MENU_WIDTH - menu_command_width), MENU_HEIGHT));
 	menustatus_window->SetActive(false);
 }
 
@@ -159,7 +163,7 @@ void Scene_Menu::CreateCommandWindow() {
 	}
 
 	command_window.reset(new Window_Command(options, menu_command_width));
-	command_window->SetX(Player::menu_offset_x);
+	command_window->SetX(Player::menu_offset_x + (Tr::IsRtlLanguage() ? MENU_WIDTH - menu_command_width : 0));
 	command_window->SetY(Player::menu_offset_y);
 	command_window->SetIndex(menu_index);
 

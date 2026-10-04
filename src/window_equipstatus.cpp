@@ -23,6 +23,7 @@
 #include "bitmap.h"
 #include "font.h"
 #include "player.h"
+#include "translation.h"
 
 Window_EquipStatus::Window_EquipStatus(int ix, int iy, int iwidth, int iheight, const Game_Actor& actor) :
 	Window_Base(ix, iy, iwidth, iheight),
@@ -43,7 +44,11 @@ void Window_EquipStatus::Refresh() {
 
 		y_offset = 18;
 		// Actor data is guaranteed to be valid
-		DrawActorName(actor, 0, 2);
+		if (Tr::IsRtlLanguage()) {
+			contents->TextDraw(contents->GetWidth(), 2, Font::ColorDefault, actor.GetName(), Text::AlignRight);
+		} else {
+			DrawActorName(actor, 0, 2);
+		}
 
 		for (int i = 0; i < 4; ++i) {
 			DrawParameter(0, y_offset + ((12 + 4) * i), i);
@@ -110,6 +115,35 @@ void Window_EquipStatus::DrawParameter(int cx, int cy, int type) {
 		new_value = agi;
 		break;
 	default:
+		return;
+	}
+
+	if (Tr::IsRtlLanguage()) {
+		const Font& draw_font = *(font ? font : Font::Default());
+		const int label_right = contents->GetWidth() - 2;
+		const int label_width = Text::GetSize(draw_font, name).width;
+		const int current_right = label_right - label_width - 8;
+		contents->TextDraw(label_right, cy, 1, name, Text::AlignRight);
+		contents->TextDraw(current_right, cy, Font::ColorDefault, std::to_string(value), Text::AlignRight);
+
+		if (draw_params) {
+			std::string_view arrow;
+			if (lcf::Data::terms.easyrpg_equipment_arrow == lcf::Data::terms.kDefaultTerm) {
+				arrow = Player::IsCP932() ? "→" : ">";
+			} else {
+				arrow = lcf::Data::terms.easyrpg_equipment_arrow;
+			}
+			const int arrow_width = Text::GetSize(draw_font, arrow).width;
+			const int arrow_right = current_right - 6;
+			if (lcf::Data::terms.easyrpg_equipment_arrow == lcf::Data::terms.kDefaultTerm && !Player::IsCP932()) {
+				contents->TextDraw(arrow_right - arrow_width / 2, cy, 1, arrow);
+			} else {
+				contents->TextDraw(arrow_right, cy, 1, arrow, Text::AlignRight);
+			}
+
+			const int new_value_right = arrow_right - arrow_width - 6;
+			contents->TextDraw(new_value_right, cy, GetNewParameterColor(value, new_value), std::to_string(new_value), Text::AlignRight);
+		}
 		return;
 	}
 

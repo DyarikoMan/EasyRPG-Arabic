@@ -22,6 +22,7 @@
 #include "window_shopstatus.h"
 #include "bitmap.h"
 #include "font.h"
+#include "translation.h"
 
 Window_ShopStatus::Window_ShopStatus(int ix, int iy, int iwidth, int iheight) :
 	Window_Base(ix, iy, iwidth, iheight), item_id(0) {
@@ -33,6 +34,7 @@ Window_ShopStatus::Window_ShopStatus(int ix, int iy, int iwidth, int iheight) :
 
 void Window_ShopStatus::Refresh() {
 	contents->Clear();
+	const bool rtl = Tr::IsRtlLanguage();
 
 	int number = 0;
 	int equipped = 0;
@@ -42,12 +44,17 @@ void Window_ShopStatus::Refresh() {
 		equipped = Main_Data::game_party->GetEquippedItemCount(item_id);
 	}
 
-	contents->TextDraw(0, 2, 1, lcf::Data::terms.possessed_items);
-	contents->TextDraw(0, 18, 1, lcf::Data::terms.equipped_items);
-
-	contents->TextDraw(120, 2, Font::ColorDefault, std::to_string(number), Text::AlignRight);
-
-	contents->TextDraw(120, 18, Font::ColorDefault, std::to_string(equipped), Text::AlignRight);
+	if (rtl) {
+		contents->TextDraw(contents->GetWidth(), 2, 1, lcf::Data::terms.possessed_items, Text::AlignRight);
+		contents->TextDraw(contents->GetWidth(), 18, 1, lcf::Data::terms.equipped_items, Text::AlignRight);
+		contents->TextDraw(contents->GetWidth() - 120, 2, Font::ColorDefault, std::to_string(number), Text::AlignRight);
+		contents->TextDraw(contents->GetWidth() - 120, 18, Font::ColorDefault, std::to_string(equipped), Text::AlignRight);
+	} else {
+		contents->TextDraw(0, 2, 1, lcf::Data::terms.possessed_items);
+		contents->TextDraw(0, 18, 1, lcf::Data::terms.equipped_items);
+		contents->TextDraw(120, 2, Font::ColorDefault, std::to_string(number), Text::AlignRight);
+		contents->TextDraw(120, 18, Font::ColorDefault, std::to_string(equipped), Text::AlignRight);
+	}
 }
 
 void Window_ShopStatus::SetItemId(int new_item_id) {

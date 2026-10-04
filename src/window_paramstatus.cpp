@@ -16,12 +16,12 @@
  */
 
 // Headers
-#include <iomanip>
-#include <sstream>
+#include <algorithm>
 #include "game_actors.h"
 #include "window_paramstatus.h"
 #include "bitmap.h"
 #include "font.h"
+#include "translation.h"
 
 Window_ParamStatus::Window_ParamStatus(int ix, int iy, int iwidth, int iheight, const Game_Actor& actor) :
 	Window_Base(ix, iy, iwidth, iheight),
@@ -35,13 +35,25 @@ Window_ParamStatus::Window_ParamStatus(int ix, int iy, int iwidth, int iheight, 
 
 void Window_ParamStatus::Refresh() {
 	contents->Clear();
+	const bool rtl = Tr::IsRtlLanguage();
+	const Font& draw_font = *(font ? font : Font::Default());
 
-	auto draw = [this](int y, std::string_view name, int value) {
-		// Draw Term
-		contents->TextDraw(0, y, 1, name);
+	auto draw = [this, rtl, &draw_font](int y, std::string_view name, int value) {
+		if (rtl) {
+			const int right = contents->GetWidth();
+			const std::string value_text = std::to_string(value);
+			const int name_width = Text::GetSize(draw_font, name).width;
+			const int value_width = Text::GetSize(draw_font, value_text).width;
+			const int value_right = std::max(0, right - name_width - 8);
+			contents->TextDraw(right, y, 1, name, Text::AlignRight);
+			contents->TextDraw(std::max(0, value_right - value_width), y, Font::ColorDefault, value_text);
+		} else {
+			// Draw Term
+			contents->TextDraw(0, y, 1, name);
 
-		// Draw Value
-		contents->TextDraw(90, y, Font::ColorDefault, std::to_string(value), Text::AlignRight);
+			// Draw Value
+			contents->TextDraw(90, y, Font::ColorDefault, std::to_string(value), Text::AlignRight);
+		}
 		return y + 16;
 	};
 
