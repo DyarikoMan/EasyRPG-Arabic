@@ -741,6 +741,17 @@ void Player::CreateGameObjects() {
 	// Check for translation-related directories and load language names.
 	translation.InitTranslations();
 
+	// Arabic edition: automatically select an Arabic translation
+	// when one is available and no language was explicitly requested.
+	if (startup_language.empty()) {
+		for (const auto& lang : translation.GetLanguages()) {
+			if (lang.lang_dir == "ar" || lang.lang_code.rfind("ar", 0) == 0) {
+				startup_language = lang.lang_dir;
+				break;
+			}
+		}
+	}
+
 	std::string game_path = FileFinder::GetFullFilesystemPath(FileFinder::Game());
 	std::string save_path = FileFinder::GetFullFilesystemPath(FileFinder::Save());
 	shared_game_and_save_directory = (game_path == save_path);
@@ -1140,27 +1151,45 @@ void Player::LoadDatabase() {
 }
 
 void Player::LoadFonts() {
-	Font::ResetDefault();
+Font::ResetDefault();
 
 #ifdef HAVE_FREETYPE
-	// Look for bundled fonts
-	auto gothic = FileFinder::OpenFont("Font");
-	if (gothic) {
-		auto ft = Font::CreateFtFont(std::move(gothic), 12, false, false);
-		player_config.font1.SetLocked(ft != nullptr);
-		if (ft) {
-			Font::SetDefault(ft, false);
-		}
-	}
+const auto language_id = Tr::GetCurrentTranslationId();
+const auto language_code = Tr::GetCurrentLanguageCode();
 
-	auto mincho = FileFinder::OpenFont("Font2");
-	if (mincho) {
-		auto ft = Font::CreateFtFont(std::move(mincho), 12, false, false);
-		player_config.font2.SetLocked(ft != nullptr);
-		if (ft) {
-			Font::SetDefault(ft, true);
-		}
-	}
+const bool arabic_translation =
+language_id == "ar" ||
+language_code.rfind("ar", 0) == 0;
+
+const int bundled_font_size = arabic_translation ? 16 : 12;
+
+// First RPG Maker font slot.
+auto gothic = FileFinder::OpenFont("Font");
+if (gothic) {
+auto ft = Font::CreateFtFont(std::move(gothic), bundled_font_size, false, false);
+player_config.font1.SetLocked(ft != nullptr);
+
+if (ft) {
+Font::SetDefault(ft, false);
+}
+}
+
+// Second RPG Maker font slot.
+auto mincho = FileFinder::OpenFont("Font2");
+
+// For Arabic, one bundled font is enough.
+if (!mincho && arabic_translation) {
+mincho = FileFinder::OpenFont("Font");
+}
+
+if (mincho) {
+auto ft = Font::CreateFtFont(std::move(mincho), bundled_font_size, false, false);
+player_config.font2.SetLocked(ft != nullptr);
+
+if (ft) {
+Font::SetDefault(ft, true);
+}
+}
 #endif
 }
 
