@@ -189,6 +189,8 @@ protected:
 	PendingMessage pending_message;
 
 	std::vector<Font::ShapeRet> shape_ret;
+	/** Animate Arabic-script shaped text from right to left. */
+	bool shape_ret_rtl = false;
 
 	bool DrawGlyph(Font& font, const Bitmap& system, char32_t glyph, bool is_exfont);
 	bool DrawGlyph(Font& font, const Bitmap& system, const Font::ShapeRet& shape);

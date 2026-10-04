@@ -512,6 +512,42 @@ void Window_Message::UpdateMessage() {
 		}
 
 		if (!shape_ret.empty()) {
+			if (shape_ret_rtl) {
+				const auto& shape = shape_ret.back();
+
+				auto get_width = [](int w) {
+					return (w > 0) ? (w - 1) / 6 + 1 : 0;
+				};
+
+				if (prev_char_printable && !prev_char_waited) {
+					auto width = get_width(shape.advance.x);
+					if (width >= 2) {
+						prev_char_waited = true;
+						++line_char_counter;
+						SetWait(1);
+						continue;
+					}
+				}
+
+				// Visual glyphs are stored left-to-right.
+				// Consume them backwards so typing starts on the right.
+				int glyph_width = page_font->GetSize(shape).width;
+				contents_x -= glyph_width;
+
+				auto advance = page_font->Render(
+					*contents,
+					contents_x,
+					contents_y,
+					*system,
+					text_color,
+					shape
+				);
+
+				SetWaitForCharacter(get_width(advance.x));
+				shape_ret.pop_back();
+				continue;
+			}
+
 			if (!DrawGlyph(*page_font, *system, shape_ret[0])) {
 				continue;
 			}
@@ -835,16 +871,12 @@ Font::ShapeDirection::RTL
 );
 }
 
-int shaped_width = 0;
-
-for (const auto& glyph : shape_ret) {
-shaped_width += glyph.advance.x;
-}
-
-// RTL paragraph: anchor to the right side.
-contents_x = contents->GetWidth() - shaped_width;
+// RTL typewriter begins at the right edge.
+shape_ret_rtl = true;
+contents_x = contents->GetWidth();
 } else {
 // Original EasyRPG behavior for Latin and other LTR text.
+shape_ret_rtl = false;
 shape_ret = page_font->Shape(text32);
 }
 
