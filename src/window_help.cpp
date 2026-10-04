@@ -19,6 +19,7 @@
 #include "window_help.h"
 #include "bitmap.h"
 #include "font.h"
+#include "translation.h"
 
 Window_Help::Window_Help(int ix, int iy, int iwidth, int iheight, Drawable::Flags flags) :
 	Window_Base(ix, iy, iwidth, iheight, flags),
@@ -54,6 +55,16 @@ void Window_Help::Clear() {
 }
 
 void Window_Help::AddText(std::string text, int color, Text::Alignment align, bool halfwidthspace) {
+	const auto language_id = Tr::GetCurrentTranslationId();
+	const auto language_code = Tr::GetCurrentLanguageCode();
+	const bool arabic_translation = language_id == "ar" || language_code.rfind("ar", 0) == 0;
+
+	if (arabic_translation) {
+		const auto offset = contents->TextDraw(text_x_offset, 2, color, text, align);
+		text_x_offset += offset.x;
+		return;
+	}
+
 	std::string::size_type pos = 0;
 	std::string::size_type nextpos = 0;
 	while (nextpos != std::string::npos) {
