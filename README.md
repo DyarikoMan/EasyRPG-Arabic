@@ -1,128 +1,100 @@
-# EasyRPG Player
+# EasyRPG-Arabic
 
-EasyRPG Player is a game interpreter to play RPG Maker 2000, 2003 and EasyRPG
-games. It uses the LCF parser library (liblcf) to read RPG Maker game data.
+EasyRPG-Arabic is a fork of EasyRPG Player focused on making it practical 
+to create and translate RPG Maker 2000/2003 games in Arabic.
 
-EasyRPG Player is part of the EasyRPG Project. More information is
-available at the project website: https://easyrpg.org/
+It adds Arabic shaping with HarfBuzz, ICU Unicode BiDi, RTL menus and UI
+layouts, and true RTL dialogue typewriter rendering — Arabic dialogue is
+revealed from right to left. Mixed Arabic, Latin text, and numbers are handled
+automatically.
 
+The project also includes tools for translating existing RPG Maker 2000/2003
+games using LcfTrans and gettext PO files.
 
-## Documentation
+## Screenshots
 
-Documentation is available at the documentation wiki: https://wiki.easyrpg.org
+![Arabic dialogue and choices](docs/screenshots/arabic-dialogue.png)
 
+## Download
 
-## Requirements
+Get EasyRPG-Arabic **v0.1** from the
+[GitHub Releases page](https://github.com/DyarikoMan/EasyRPG-Arabic/releases/tag/v0.1-arabic).
+This release is experimental and should be considered a pre-release.
 
-### minimal / required
+- **EasyRPG-Arabic-Windows-x64.zip** — recommended download for most users.
+- **Player.exe** — standalone Windows x64 executable.
+- **Arabic-Translation-Toolkit.zip** — tools for translating RPG Maker 2000/2003 games.
 
-- [liblcf] for RPG Maker data reading.
-- SDL3 or SDL2 >= 2.0.14 for screen backend support.
-- Pixman for low level pixel manipulation.
-- libpng for PNG image support.
-- zlib for XYZ image and ZIP archive support.
-- fmtlib >= 6 for text formatting/coloring and internal logging.
+## Quick start
 
-### extended / recommended
+1. Put `Player.exe` in the game folder beside `RPG_RT.exe`.
+2. Put the Arabic translation files in `Language/ar/`. A typical folder looks like:
 
-- FreeType2 for external font support (+ HarfBuzz for Unicode text shaping).
-- mpg123 for MP3 audio support.
-- WildMIDI for MIDI audio support using GUS patches.
-- FluidSynth for MIDI audio support using soundfonts.
-- Libvorbis / Tremor for Ogg Vorbis audio support.
-- opusfile for Opus audio support.
-- libsndfile for better WAVE audio support.
-- libxmp for tracker music support.
-- SpeexDSP or libsamplerate for proper audio resampling.
-- lhasa for LHA (.lzh) archive support.
-- nlohmann_json for processing JSON files (required when targeting Emscripten)
+   ```text
+   Language/
+   └── ar/
+       ├── Meta.ini
+       ├── Font/
+       │   └── Font.ttf
+       ├── RPG_RT.ldb.po
+       └── Map0001.po
+   ```
 
-The older SDL version 1.2 is still supported, but deprecated.
-Please do not add new platform code for this library.
+3. Run `Player.exe` from the game folder. Arabic is selected automatically when
+   an Arabic translation is available.
 
+For optional widescreen rendering, run:
 
-## Daily builds
+```powershell
+Player.exe --game-resolution widescreen
+```
 
-Up to date binaries for assorted platforms are available at our continuous
-integration service:
+## Tutorials
 
-https://ci.easyrpg.org/view/Player/
+- [Create a new Arabic RPG Maker 2000/2003 game](docs/tutorials/create-arabic-game.md)
+- [Translate an existing RPG Maker 2000/2003 game](docs/tutorials/translate-existing-game.md)
+- [Arabic dialogue, choices, and RTL typewriter](docs/tutorials/arabic-dialogue-and-choices.md)
 
+## Translating a game
 
-## Source code
+See the [Arabic translation toolkit guide](arabic/README.md) for details. Run
+the updater from the repository or toolkit folder:
 
-EasyRPG Player development is hosted by GitHub, project files are available
-in this git repository:
+```powershell
+.\arabic\tools\update-arabic.ps1 `
+  -GamePath "C:\Games\MyRPG" `
+  -LcfTransPath "C:\Tools\lcftrans.exe"
+```
 
-https://github.com/EasyRPG/Player
+The workflow uses LcfTrans to create or update PO files. The toolkit includes
+a small starter set of RPG Maker system terms currently translated in Moroccan
+Darija. These are only defaults: you can freely edit them to use Modern
+Standard Arabic or another Arabic dialect.
 
-Released versions are also available at our Download Archive:
+## Status and limitations
 
-https://easyrpg.org/downloads/player/
+EasyRPG-Arabic v0.1 has been tested with the stock RPG Maker 2000/2003 UI.
+Custom games, custom windows, and unusual layouts may still reveal RTL or text
+rendering issues. Please report problems or suggestions on the
+[GitHub issue tracker](https://github.com/DyarikoMan/EasyRPG-Arabic/issues).
 
+## Upstream project
 
-## Building
+EasyRPG-Arabic is a fork focused on Arabic support; it is not the upstream
+EasyRPG Player project and does not claim ownership of upstream code. EasyRPG
+Player is developed by the EasyRPG Project:
 
-See [BUILDING document].
+- [EasyRPG Player source](https://github.com/EasyRPG/Player)
+- [EasyRPG Project website](https://easyrpg.org/)
 
+Upstream attribution is retained in this repository.
 
-## Running EasyRPG Player
+## Building and license
 
-Run the `easyrpg-player` executable from a RPG Maker 2000 or 2003 game
-project folder (same place as `RPG_RT.exe`).
+- Build instructions: [docs/BUILDING.md](docs/BUILDING.md)
+- License: [COPYING](COPYING)
+- Authors and contributors: [docs/AUTHORS.md](docs/AUTHORS.md)
 
-
-## Bug reporting
-
-Available options:
-
-* File an issue at https://github.com/EasyRPG/Player/issues
-* Open a thread at https://community.easyrpg.org/
-* Chat with us via IRC: [#easyrpg at irc.libera.chat]
-
-
-## License
-
-EasyRPG Player is free software available under the GPLv3 license. See the file
-[COPYING] for license conditions. For Author information see [AUTHORS document].
-
-EasyRPG [Logo] and [Logo2] are licensed under the CC-BY-SA 4.0 license.
-
-
-### 3rd party software
-
-EasyRPG Player makes use of the following 3rd party software:
-
-* [FMMidi] YM2608 FM synthesizer emulator - Copyright (c) 2003-2006 yuno
-  (Yoshio Uno), provided under the (3-clause) BSD license
-* [dr_wav] WAV audio loader and writer - Copyright (c) David Reid, provided
-  under public domain or MIT-0
-
-### 3rd party resources
-
-* [Baekmuk] font family (Korean) - Copyright (c) 1986-2002 Kim Jeong-Hwan,
-  provided under the Baekmuk License
-* [Shinonome] font family (Japanese) - Copyright (c) 1999-2000 Yasuyuki
-  Furukawa and contributors, provided under public domain. Glyphs were added
-  and modified for use in EasyRPG Player, all changes under public domain.
-* [ttyp0] font family - Copyright (c) 2012-2015 Uwe Waldmann, provided under
-  ttyp0 license
-* [WenQuanYi] font family (CJK) - Copyright (c) 2004-2010 WenQuanYi Project
-  Contributors provided under the GPLv2 or later with Font Exception
-* [Teenyicons] Tiny minimal 1px icons - Copyright (c) 2020 Anja van Staden,
-  provided under the MIT license (only used by the Emscripten web shell)
-
-[liblcf]: https://github.com/EasyRPG/liblcf
-[BUILDING document]: docs/BUILDING.md
-[#easyrpg at irc.libera.chat]: https://kiwiirc.com/nextclient/#ircs://irc.libera.chat/#easyrpg?nick=rpgguest??
-[COPYING]: COPYING
-[AUTHORS document]: docs/AUTHORS.md
-[Logo]: resources/logo.png
-[Logo2]: resources/logo2.png
-[FMMidi]: http://unhaut.epizy.com/fmmidi
-[dr_wav]: https://github.com/mackron/dr_libs
-[baekmuk]: https://kldp.net/baekmuk
-[Shinonome]: http://openlab.ring.gr.jp/efont/shinonome
-[ttyp0]: https://people.mpi-inf.mpg.de/~uwe/misc/uw-ttyp0
-[WenQuanYi]: http://wenq.org
-[Teenyicons]: https://github.com/teenyicons/teenyicons
+EasyRPG Player and this fork are distributed under the GPLv3, according to the
+repository license. See `COPYING` for the license text and retain upstream
+copyright and attribution notices.
