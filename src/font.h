@@ -58,7 +58,13 @@ class Font {
 	};
 
 	/** Contains metrics of a glyph shaped by Harfbuzz */
-	struct ShapeRet {
+	enum class ShapeDirection {
+Auto,
+LTR,
+RTL
+};
+
+struct ShapeRet {
 		/** Codepoint of this glyph after shaping */
 		char32_t code;
 		/**
@@ -185,7 +191,7 @@ class Font {
 	 * @param text Text to shape
 	 * @return Shaping information. See Font::ShapeRet
 	 */
-	std::vector<ShapeRet> Shape(std::u32string_view text) const;
+	std::vector<ShapeRet> Shape(std::u32string_view text, ShapeDirection direction = ShapeDirection::Auto) const;
 
 	/**
 	 * Defines a fallback font that shall be used when a glyph is not found in the current font.
@@ -251,7 +257,7 @@ class Font {
 	virtual GlyphRet vRender(char32_t glyph) const = 0;
 	virtual GlyphRet vRenderShaped(char32_t glyph) const { return vRender(glyph); };
 	virtual bool vCanShape() const { return false; }
-	virtual std::vector<ShapeRet> vShape(std::u32string_view) const { return {}; }
+	virtual std::vector<ShapeRet> vShape(std::u32string_view, ShapeDirection) const { return {}; }
 	virtual void vApplyStyle(const Style& style) { (void)style; };
 
  protected:
