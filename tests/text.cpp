@@ -130,10 +130,10 @@ TEST_CASE("TextDrawColorStrReturn") {
 TEST_CASE("TextBidiVisualOrderAndMixedRuns") {
 	Bitmap::SetFormat(format_R8G8B8A8_a().format());
 	BidiVisualOrderTestFont font;
-	auto surface = Bitmap::Create(16, 12, true);
+	auto surface = Bitmap::Create(16, 16, true);
 	auto system = Cache::SysBlack();
 
-	const Point drawn_size = Text::Draw(*surface, 0, 0, font, *system, 0, "هراوة خشبية بسيطة");
+	const Point drawn_size = Text::Draw(*surface, 0, 4, font, *system, 0, "هراوة خشبية بسيطة");
 	const Rect measured_size = Text::GetSize(font, "هراوة خشبية بسيطة");
 	CHECK(surface->GetColorAt(0, 0).red > 250); // بسيطة, at left
 	CHECK(surface->GetColorAt(2, 0).green > 250); // خشبية
@@ -158,6 +158,27 @@ TEST_CASE("TextBidiVisualOrderAndMixedRuns") {
 	Text::GetSize(font, "RPG Maker 2003 خدام مزيان");
 	CHECK(HasShapeCall(font, U"RPG Maker 2003", Font::ShapeDirection::LTR));
 	CHECK(HasShapeCall(font, U"خدام مزيان", Font::ShapeDirection::RTL));
+}
+
+TEST_CASE("GlyphRenderUsesGlobalVerticalOffset") {
+	Bitmap::SetFormat(format_R8G8B8A8_a().format());
+	BidiVisualOrderTestFont font;
+	auto surface = Bitmap::Create(16, 16, true);
+	auto system = Cache::SysBlack();
+
+	const Point plain_advance = font.Render(*surface, 2, 6, *system, 0, glyph_simple);
+	const Font::ShapeRet shaped = {glyph_simple, Point(1, 0), Point(0, 0), false};
+	const Point shaped_advance = font.Render(*surface, 4, 6, *system, 0, shaped);
+	font.Render(*surface, 6, 2, *system, 0, glyph_simple);
+
+	CHECK_EQ(plain_advance, Point(1, 0));
+	CHECK_EQ(shaped_advance, Point(1, 0));
+	CHECK(surface->GetColorAt(2, 2).red > 250);
+	CHECK(surface->GetColorAt(4, 2).red > 250);
+	CHECK(surface->GetColorAt(2, 6).alpha == 0);
+	CHECK(surface->GetColorAt(4, 6).alpha == 0);
+	CHECK(surface->GetColorAt(6, 0).red > 250);
+	CHECK(surface->GetColorAt(6, 2).alpha == 0);
 }
 
 TEST_SUITE_END();

@@ -59,6 +59,14 @@
 
 // Static variables.
 namespace {
+	constexpr int glyph_render_y_offset = -4;
+
+	int GetGlyphRenderY(int y, int glyph_offset_y) {
+		const int unshifted_y = y - glyph_offset_y;
+		const int shifted_y = unshifted_y + glyph_render_y_offset;
+		return unshifted_y >= 0 && shifted_y < 0 ? 0 : shifted_y;
+	}
+
 	template <typename T>
 	BitmapFontGlyph const* find_glyph(const T& glyphset, char32_t code) {
 		auto iter = std::lower_bound(std::begin(glyphset), std::end(glyphset), code);
@@ -948,7 +956,7 @@ bool Font::RenderImpl(Bitmap& dest, int const x, int const y, const Bitmap& sys,
 
 	// Drawing position of the glyph
 	rect.x += gret.offset.x;
-	rect.y -= gret.offset.y;
+	rect.y = GetGlyphRenderY(y, gret.offset.y);
 
 	unsigned src_x = 0;
 	unsigned src_y = 0;
@@ -1051,7 +1059,7 @@ Point Font::Render(Bitmap& dest, int x, int y, Color const& color, char32_t glyp
 		return {};
 	}
 
-	auto rect = Rect(x, y, gret.bitmap->width(), gret.bitmap->height());
+	auto rect = Rect(x, GetGlyphRenderY(y, 0), gret.bitmap->width(), gret.bitmap->height());
 	dest.MaskedBlit(rect, *gret.bitmap, 0, 0, color);
 
 	gret.advance.x += current_style.letter_spacing;

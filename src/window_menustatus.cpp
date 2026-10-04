@@ -92,21 +92,18 @@ void Window_MenuStatus::Refresh() {
 			DrawActorState(actor, state_right, stats_y);
 			DrawActorHp(actor, hp_right, stats_y, actor.MaxHpValue() >= 1000 ? 4 : 3);
 
-			bool draw_exp_label = actor.MaxExpValue() < 1000000;
+			constexpr int status_label_gap = 2;
 			const std::string exp_text = actor.GetExpString() + "/" + actor.GetNextExpString();
 			const int exp_value_width = Text::GetSize(draw_font, exp_text).width;
-			const int exp_label_width = draw_exp_label ? Text::GetSize(draw_font, lcf::Data::terms.exp_short).width : 0;
+			const int exp_label_width = Text::GetSize(draw_font, lcf::Data::terms.exp_short).width;
 			const std::string sp_text = std::to_string(actor.GetSp()) + "/" + std::to_string(actor.GetMaxSp());
 			const int sp_width = Text::GetSize(draw_font, sp_text).width
-				+ Text::GetSize(draw_font, lcf::Data::terms.sp_short).width + 4;
-			if (sp_width + exp_value_width + (draw_exp_label ? exp_label_width + 4 : 0) + 4 > info_right) {
-				draw_exp_label = false;
-			}
-			const int exp_width = exp_value_width + (draw_exp_label ? exp_label_width + 4 : 0);
+				+ Text::GetSize(draw_font, lcf::Data::terms.sp_short).width + status_label_gap;
+			const int exp_width = exp_value_width + exp_label_width + status_label_gap;
 			const int exp_right = info_right;
-			const int sp_right = std::max(sp_width, exp_right - exp_width - 4);
-			DrawActorExp(actor, exp_right, exp_y, draw_exp_label);
-			DrawActorSp(actor, sp_right, exp_y, actor.MaxSpValue() >= 1000 ? 4 : 3);
+			const int sp_right = std::max(sp_width, exp_right - exp_width - status_label_gap);
+			DrawActorExp(actor, exp_right, exp_y, true, status_label_gap);
+			DrawActorSp(actor, sp_right, exp_y, actor.MaxSpValue() >= 1000 ? 4 : 3, true, status_label_gap);
 		} else {
 			DrawActorName(actor, 48 + 8 + text_offset, i*48 + 2 + y);
 			DrawActorTitle(actor, 48 + 8 + 88 + text_offset, i*48 + 2 + y);

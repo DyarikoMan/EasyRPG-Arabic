@@ -59,9 +59,9 @@ public:
 	void DrawActorClass(const Game_Actor& actor, int cx, int cy) const;
 	void DrawActorLevel(const Game_Actor& actor, int cx, int cy) const;
 	void DrawActorState(const Game_Battler& actor, int cx, int cy) const;
-	void DrawActorExp(const Game_Actor& actor, int cx, int cy, bool draw_label = true) const;
+	void DrawActorExp(const Game_Actor& actor, int cx, int cy, bool draw_label = true, int label_gap = 4) const;
 	void DrawActorHp(const Game_Battler& actor, int cx, int cy, int digits, bool draw_max = true) const;
-	void DrawActorSp(const Game_Battler& actor, int cx, int cy, int digits, bool draw_max = true) const;
+	void DrawActorSp(const Game_Battler& actor, int cx, int cy, int digits, bool draw_max = true, int label_gap = 4) const;
 	void DrawActorParameter(const Game_Battler& actor, int cx, int cy, int type) const;
 	void DrawEquipmentType(const Game_Actor& actor, int cx, int cy, int type) const;
 	void DrawItemName(const lcf::rpg::Item& item, int cx, int cy, bool enabled = true) const;

@@ -43,6 +43,7 @@
 #include "font.h"
 #include "cache.h"
 #include "text.h"
+#include "translation.h"
 
 // FIXME: Off by 1 bug in window base class
 constexpr int message_animation_frames = 7;
@@ -873,7 +874,12 @@ Font::ShapeDirection::RTL
 
 // RTL typewriter begins at the right edge.
 shape_ret_rtl = true;
-contents_x = contents->GetWidth();
+const int choice_start = pending_message.GetChoiceStartLine();
+const bool is_rtl_choice_line = Tr::IsRtlLanguage() &&
+	pending_message.HasChoices() &&
+	line_count >= choice_start &&
+	line_count < choice_start + pending_message.GetNumChoices();
+contents_x = contents->GetWidth() - (is_rtl_choice_line ? 12 : 0);
 } else {
 // Original EasyRPG behavior for Latin and other LTR text.
 shape_ret_rtl = false;

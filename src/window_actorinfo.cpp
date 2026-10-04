@@ -78,6 +78,7 @@ void Window_ActorInfo::DrawInfo() {
 		state ? state->name : lcf::Data::terms.normal_status, value_align);
 
 	//Draw Level
-	contents->TextDraw(label_x, 178, 1, lcf::Data::terms.level, label_align);
+	const auto level_label = rtl ? lcf::Data::terms.lvl_short : lcf::Data::terms.level;
+	contents->TextDraw(label_x, 178, 1, level_label, label_align);
 	contents->TextDraw(rtl ? right_edge - 78 : 78, 178, Font::ColorDefault, std::to_string(actor.GetLevel()), Text::AlignRight);
 }

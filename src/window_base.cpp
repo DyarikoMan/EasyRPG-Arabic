@@ -168,14 +168,14 @@ void Window_Base::DrawActorState(const Game_Battler& actor, int cx, int cy) cons
 	}
 }
 
-void Window_Base::DrawActorExp(const Game_Actor& actor, int cx, int cy, bool show_label) const {
+void Window_Base::DrawActorExp(const Game_Actor& actor, int cx, int cy, bool show_label, int label_gap) const {
 	if (Tr::IsRtlLanguage()) {
 		const Font& draw_font = *(font ? font : Font::Default());
-		const bool draw_label = show_label && actor.MaxExpValue() < 1000000;
+		const bool draw_label = show_label || Tr::IsRtlLanguage();
 		const std::string value = actor.GetExpString() + "/" + actor.GetNextExpString();
 		const int value_width = Text::GetSize(draw_font, value).width;
 		const int label_width = draw_label ? Text::GetSize(draw_font, lcf::Data::terms.exp_short).width : 0;
-		const int field_width = value_width + (draw_label ? label_width + 4 : 0);
+		const int field_width = value_width + (draw_label ? label_width + label_gap : 0);
 		const int right = std::min(std::max(cx, field_width), contents->GetWidth());
 		const int value_x = std::max(0, right - field_width);
 		contents->TextDraw(value_x, cy, Font::ColorDefault, value);
@@ -250,7 +250,7 @@ void Window_Base::DrawActorHp(const Game_Battler& actor, int cx, int cy, int dig
 	contents->TextDraw(cx + dx, cy, Font::ColorDefault, std::to_string(actor.GetMaxHp()), Text::AlignRight);
 }
 
-void Window_Base::DrawActorSp(const Game_Battler& actor, int cx, int cy, int digits, bool draw_max) const {
+void Window_Base::DrawActorSp(const Game_Battler& actor, int cx, int cy, int digits, bool draw_max, int label_gap) const {
 	if (Tr::IsRtlLanguage()) {
 		const Font& draw_font = *(font ? font : Font::Default());
 		const std::string current = std::to_string(actor.GetSp());
@@ -260,7 +260,7 @@ void Window_Base::DrawActorSp(const Game_Battler& actor, int cx, int cy, int dig
 		const int maximum_width = draw_max ? Text::GetSize(draw_font, maximum).width : 0;
 		const int label_width = Text::GetSize(draw_font, lcf::Data::terms.sp_short).width;
 		const int value_width = current_width + slash_width + maximum_width;
-		const int field_width = value_width + 4 + label_width;
+		const int field_width = value_width + label_gap + label_width;
 		const int right = std::min(std::max(cx, field_width), contents->GetWidth());
 		const int value_x = std::max(0, right - field_width);
 		const int current_color = GetValueFontColor(actor.GetSp(), actor.GetMaxSp(), false);
