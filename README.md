@@ -1,13 +1,15 @@
 # EasyRPG-Arabic
 
 EasyRPG-Arabic is a fork of EasyRPG Player focused on making it practical to
-create RPG Maker 2000/2003 games in Arabic.
+create RPG Maker 2000/2003 games in Arabic. It is especially aimed at people
+who want to make small games quickly without getting overwhelmed by engine
+setup or technical systems before they can start building the game itself.
 
 It adds Arabic shaping with HarfBuzz, ICU Unicode BiDi, RTL menus and UI
-layouts, a bundled custom Arabic pixel font with support for custom Arabic-capable
-fonts, and true RTL dialogue typewriter rendering — Arabic dialogue is revealed
-from right to left. Mixed Arabic, Latin text, and numbers are handled
-automatically.
+layouts, right-aligned Arabic dialogue and choices, a bundled custom Arabic
+pixel font with support for custom Arabic-capable fonts, and true RTL dialogue
+typewriter rendering — Arabic dialogue is revealed from right to left. Mixed
+Arabic, Latin text, and numbers are handled automatically.
 
 The project also includes tools for managing Arabic game text using LcfTrans
 and gettext PO files.
