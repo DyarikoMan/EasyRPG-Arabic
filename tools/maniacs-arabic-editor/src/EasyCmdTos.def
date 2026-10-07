@@ -1,0 +1,2 @@
+EXPORTS
+	InitializeArabicTextHook=_InitializeArabicTextHook@0

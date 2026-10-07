@@ -87,6 +87,12 @@ The toolkit creates or updates PO files for an RPG Maker project. It includes a
 small starter set of system terms in Moroccan Darija; you can edit these
 defaults for Modern Standard Arabic or another Arabic dialect.
 
+## Arabic in the Maniacs editor
+
+An optional Windows patch improves Arabic rendering in the Maniacs editor. See
+the [Maniacs Arabic Editor guide](tools/maniacs-arabic-editor/README.md) for
+installation and current support.
+
 ## Status and limitations
 
 EasyRPG-Arabic v0.1 has been tested with the stock RPG Maker 2000/2003 UI.

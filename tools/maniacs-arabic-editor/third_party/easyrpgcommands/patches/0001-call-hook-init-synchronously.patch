@@ -1,0 +1,33 @@
+diff --git a/EasyCmdControlAttribute.cs b/EasyCmdControlAttribute.cs
+index e88873d..9b27e6f 100644
+--- a/EasyCmdControlAttribute.cs
++++ b/EasyCmdControlAttribute.cs
+@@ -11,6 +11,10 @@ namespace EasyRpgCommands
+ {
+     class EasyCmdControlAttribute : cmdcs.Rm2k3CmdControlAttribute
+     {
++        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
++        [return: MarshalAs(UnmanagedType.Bool)]
++        private delegate bool InitializeArabicTextHookDelegate();
++
+         [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true, SetLastError = true)]
+         public static extern IntPtr GetProcAddress(IntPtr hModule, string procName);
+ 
+@@ -28,7 +32,16 @@ namespace EasyRpgCommands
+ 
+             harmony.Patch(targetMethod, prefix: new HarmonyMethod(prefix));
+ 
+-            LoadLibrary("Plugin/EasyCmdTos.dll");
++            IntPtr hook = LoadLibrary("Plugin/EasyCmdTos.dll");
++            if (hook != IntPtr.Zero)
++            {
++                IntPtr initializeHook = GetProcAddress(hook, "InitializeArabicTextHook");
++                if (initializeHook != IntPtr.Zero)
++                {
++                    var initialize = Marshal.GetDelegateForFunctionPointer<InitializeArabicTextHookDelegate>(initializeHook);
++                    initialize();
++                }
++            }
+         }
+ 
+         private static bool SupportEasyRpgCommands(ref bool __result, int code)

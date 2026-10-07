@@ -1,0 +1,24 @@
+EasyRPG-Arabic Maniacs Editor Patch
+
+The hook in Plugin/EasyCmdTos.dll is EasyRPG-Arabic project code, distributed
+under the GNU General Public License version 3 or later. See COPYING.
+
+EasyRpgCommands.dll
+Ghabry / EasyRpgCommands. MIT No Attribution (MIT-0). The license text is in
+licenses/EasyRpgCommands-COPYING in the release ZIP and
+third_party/easyrpgcommands/COPYING in the source tree.
+
+0Harmony.dll
+Harmony, copyright (c) 2017 Andreas Pardeike. MIT License. The license text is
+licenses/Harmony-LICENSE in the release ZIP and third_party/harmony/LICENSE in
+the source tree.
+
+MinHook
+MinHook, copyright (c) 2009-2017 Tsuda Kageyu; portions of Hacker Disassembler
+Engine 32 are copyright (c) 2008-2009 Vyacheslav Patkov. MinHook is statically
+linked into EasyCmdTos.dll. Its BSD 2-Clause license and disclaimer are in
+licenses/MinHook-LICENSE.txt in the release ZIP and
+third_party/minhook/LICENSE.txt in the source tree.
+
+The Maniacs installation supplies cmdcs.dll, cmdTos.dll, and its Plugin folder.
+These Maniacs-owned files are not included in this package.
