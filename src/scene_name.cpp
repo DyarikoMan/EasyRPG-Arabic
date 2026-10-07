@@ -26,6 +26,34 @@
 #include "output.h"
 #include "translation.h"
 
+Scene_Name_WindowGeometry GetSceneNameWindowGeometry(bool rtl_session,
+		int menu_offset_x, int menu_offset_y) {
+	constexpr int margin_x = 32;
+	constexpr int margin_y = 8;
+	constexpr int window_face_width = 64;
+	constexpr int window_face_height = 64;
+	constexpr int window_name_width = 192;
+	constexpr int window_name_height = 32;
+	constexpr int window_keyboard_width = 256;
+	constexpr int window_keyboard_height = 160;
+
+	const int group_x = menu_offset_x + margin_x;
+	return {
+		rtl_session ? group_x + window_name_width : group_x,
+		menu_offset_y + margin_y,
+		window_face_width,
+		window_face_height,
+		rtl_session ? group_x : group_x + window_face_width,
+		menu_offset_y + margin_y + 32,
+		window_name_width,
+		window_name_height,
+		group_x,
+		menu_offset_y + window_face_height + margin_y,
+		window_keyboard_width,
+		window_keyboard_height
+	};
+}
+
 Scene_Name_KeyboardPages BuildSceneNameKeyboardPages(bool arabic_session, int charset,
 		std::vector<Window_Keyboard::Mode> charset_pages) {
 	if (arabic_session) {
@@ -44,25 +72,20 @@ Scene_Name::Scene_Name(Game_Actor& actor, int charset, bool use_default_name)
 }
 
 void Scene_Name::Start() {
-	// Create the windows
-	int margin_x = 32;
-	int margin_y = 8;
-	int window_face_width = 64;
-	int window_face_height = 64;
-	int window_name_width = 192;
-	int window_name_height = 32;
-	int window_keyboard_width = 256;
-	int window_keyboard_height = 160;
+	const bool arabic_session = Tr::IsRtlLanguage();
+	const auto geometry = GetSceneNameWindowGeometry(arabic_session,
+			Player::menu_offset_x, Player::menu_offset_y);
 
-	face_window.reset(new Window_Face(Player::menu_offset_x + margin_x, Player::menu_offset_y + margin_y, window_face_width, window_face_height));
+	// Create the windows. RTL sessions mirror only the face/name horizontal group.
+	face_window.reset(new Window_Face(geometry.face_x, geometry.face_y,
+			geometry.face_width, geometry.face_height));
 	face_window->Set(actor);
 	face_window->Refresh();
 
-	name_window.reset(new Window_Name(Player::menu_offset_x + window_face_width + margin_x, Player::menu_offset_y + margin_y + 32, window_name_width, window_name_height));
+	name_window.reset(new Window_Name(geometry.name_x, geometry.name_y, geometry.name_width, geometry.name_height));
 	name_window->Set(use_default_name ? ToString(actor.GetName()) : "");
 	name_window->Refresh();
 
-	const bool arabic_session = Tr::IsRtlLanguage();
 	const char* done = Window_Keyboard::DONE;
 	std::vector<Window_Keyboard::Mode> charset_pages;
 	if (!arabic_session) {
@@ -96,7 +119,8 @@ void Scene_Name::Start() {
 	auto page_selection = BuildSceneNameKeyboardPages(arabic_session, layout_index, std::move(charset_pages));
 	layouts = std::move(page_selection.modes);
 	layout_index = page_selection.initial_index;
-	kbd_window.reset(new Window_Keyboard(Player::menu_offset_x + margin_x, Player::menu_offset_y + window_face_height + margin_y, window_keyboard_width, window_keyboard_height, done));
+	kbd_window.reset(new Window_Keyboard(geometry.keyboard_x, geometry.keyboard_y,
+			geometry.keyboard_width, geometry.keyboard_height, done));
 
 	auto next_index = layout_index + 1;
 	if (next_index >= static_cast<int>(layouts.size())) {

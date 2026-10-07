@@ -30,6 +30,29 @@ struct Scene_Name_KeyboardPages {
 	int initial_index;
 };
 
+struct Scene_Name_WindowGeometry {
+	int face_x;
+	int face_y;
+	int face_width;
+	int face_height;
+	int name_x;
+	int name_y;
+	int name_width;
+	int name_height;
+	int keyboard_x;
+	int keyboard_y;
+	int keyboard_width;
+	int keyboard_height;
+};
+
+/**
+ * Calculates name scene window geometry while keeping its existing dimensions
+ * and vertical positions. RTL sessions mirror only the face/name horizontal
+ * placement within their existing combined group.
+ */
+Scene_Name_WindowGeometry GetSceneNameWindowGeometry(bool rtl_session,
+		int menu_offset_x, int menu_offset_y);
+
 /**
  * Builds the page sequence for the name keyboard.
  * Arabic sessions always start on Arabic; other sessions retain the charset
