@@ -121,7 +121,7 @@ void Scene_Name::Start() {
 	layouts = std::move(page_selection.modes);
 	layout_index = page_selection.initial_index;
 	kbd_window.reset(new Window_Keyboard(geometry.keyboard_x, geometry.keyboard_y,
-			geometry.keyboard_width, geometry.keyboard_height, done));
+			geometry.keyboard_width, geometry.keyboard_height, done, arabic_session));
 
 	auto next_index = layout_index + 1;
 	if (next_index >= static_cast<int>(layouts.size())) {

@@ -39,7 +39,8 @@ public:
 	 * @param iheight window height.
 	 * @param ndone_text text for the "Done" button.
 	 */
-	Window_Keyboard(int ix, int iy, int iwidth = 320, int iheight = 80, const char* ndone_text = DONE);
+	Window_Keyboard(int ix, int iy, int iwidth = 320, int iheight = 80,
+			const char* ndone_text = DONE, bool rtl_session = false);
 
 	enum Mode {
 		Hiragana,
@@ -69,11 +70,12 @@ public:
 	 * Keyboard geometry and navigation helpers. Horizontal deltas are visual
 	 * directions (negative is left, positive is right).
 	 */
-	static bool IsRtlLayout(Mode mode);
-	static int LogicalToVisualColumn(Mode mode, int logical_col);
-	static int GetItemStartVisualColumn(Mode mode, int row, int logical_col);
+	static bool IsRtlLayout(Mode mode, bool rtl_session = false);
+	static int LogicalToVisualColumn(Mode mode, int logical_col, bool rtl_session = false);
+	static int GetItemStartVisualColumn(Mode mode, int row, int logical_col,
+			bool rtl_session = false);
 	static std::pair<int, int> GetNextSelection(Mode mode, int row, int logical_col,
-			int vertical_delta, int visual_horizontal_delta);
+			int vertical_delta, int visual_horizontal_delta, bool rtl_session = false);
 
 	static const char* const DONE;
 	static const char* const SPACE;
@@ -102,6 +104,7 @@ protected:
 	int col;
 
 	bool play_cursor;
+	const bool rtl_session;
 };
 
 

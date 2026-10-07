@@ -153,6 +153,48 @@ TEST_CASE("Window_Name erases Arabic code points and tashkeel one at a time") {
 	}
 }
 
+TEST_CASE("Window_Name erases valid ExFont tokens as one icon") {
+	MockGame game(MockMap::eNone);
+	Window_Name name(0, 0, 192, 32, true);
+	const int contents_width = name.GetContents()->GetWidth();
+	const auto check_caret = [&name, contents_width]() {
+		name.Update();
+		const int width = Text::GetSize(*Font::Default(), name.Get()).width;
+		const int logical_end_offset = Text::GetLogicalEndCaretOffset(*Font::Default(), name.Get());
+		CHECK(name.GetCursorRect().x == Window_Name::GetCaretX(true,
+				contents_width, width, logical_end_offset));
+	};
+
+	name.Append("محمد");
+	name.Append("$A");
+	CHECK(name.Get() == "محمد$A");
+	check_caret();
+	name.Erase();
+	CHECK(name.Get() == "محمد");
+	check_caret();
+	name.Erase();
+	CHECK(name.Get() == "محم");
+	check_caret();
+
+	name.Set("");
+	name.Append("$A");
+	name.Append("$B");
+	CHECK(name.Get() == "$A$B");
+	name.Erase();
+	CHECK(name.Get() == "$A");
+	check_caret();
+	name.Erase();
+	CHECK(name.Get().empty());
+	check_caret();
+
+	// Invalid/literal dollar sequences are not treated as ExFont icons.
+	name.Set("$?");
+	name.Erase();
+	CHECK(name.Get() == "$");
+	name.Erase();
+	CHECK(name.Get().empty());
+}
+
 TEST_CASE("Name direction stays with the session across its keyboard pages") {
 	MockGame game(MockMap::eNone);
 	Window_Name name(0, 0, 192, 32, true);

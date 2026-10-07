@@ -22,6 +22,7 @@
 #include "font.h"
 #include <lcf/data.h>
 #include "game_system.h"
+#include "utils.h"
 
 namespace {
 
@@ -96,6 +97,27 @@ void Window_Name::Update() {
 void Window_Name::Erase() {
 	if (name.empty())
 		return;
+
+	// Use the same parser as text rendering so valid ExFont sequences (including
+	// any active Maniacs extended syntax) are erased as one entered icon.
+	const char* cursor = name.data();
+	const char* const end = cursor + name.size();
+	const char* trailing_token = nullptr;
+	bool trailing_token_is_exfont = false;
+	while (cursor < end) {
+		const auto token = Utils::TextNext(cursor, end, 0);
+		if (token.next <= cursor) {
+			break;
+		}
+		trailing_token = cursor;
+		trailing_token_is_exfont = token.is_exfont;
+		cursor = token.next;
+	}
+	if (trailing_token_is_exfont) {
+		name.resize(static_cast<size_t>(trailing_token - name.data()));
+		Refresh();
+		return;
+	}
 
 	auto u32name = Utils::DecodeUTF32(name);
 	u32name.pop_back();

@@ -173,6 +173,64 @@ TEST_CASE("Arabic keyboard navigation follows visual directions and skips empty 
 	CHECK(Keyboard::GetNextSelection(Keyboard::Arabic, 7, 0, 0, 1) == std::make_pair(7, 0));
 }
 
+TEST_CASE("Symbol keyboard follows RTL session geometry and navigation without mirroring icons") {
+	using Keyboard = Window_Keyboard;
+	MockGame game(MockMap::eNone);
+
+	CHECK(Keyboard::IsRtlLayout(Keyboard::Symbol, true));
+	CHECK(Keyboard::LogicalToVisualColumn(Keyboard::Symbol, 0, true) == 9);
+	CHECK(Keyboard::GetItemStartVisualColumn(Keyboard::Symbol, 0, 0, true) == 9);
+	CHECK(Keyboard::GetItemStartVisualColumn(Keyboard::Symbol, 8, 6, true) == 2);
+	CHECK(Keyboard::GetItemStartVisualColumn(Keyboard::Symbol, 8, 8, true) == 0);
+
+	// Symbol tokens and page content remain in their original logical order.
+	CHECK(Keyboard::layouts[Keyboard::Symbol].items[0][0] == "$A");
+	CHECK(Keyboard::layouts[Keyboard::Symbol].items[0][1] == "$B");
+	CHECK(Keyboard::layouts[Keyboard::Symbol].items[8][6] == Keyboard::NEXT_PAGE);
+	CHECK(Keyboard::layouts[Keyboard::Symbol].items[8][8] == Keyboard::DONE);
+
+	Keyboard rtl_keyboard(0, 0, 320, 80, Keyboard::DONE, true);
+	rtl_keyboard.SetMode(Keyboard::Arabic, Keyboard::Symbol);
+	CHECK(rtl_keyboard.GetSelected() == "ا");
+	rtl_keyboard.SetMode(Keyboard::Symbol, Keyboard::Arabic);
+	CHECK(rtl_keyboard.GetSelected() == "$A");
+	CHECK(rtl_keyboard.GetKey(8, 6) == Keyboard::layouts[Keyboard::Arabic].key_text);
+	CHECK(rtl_keyboard.GetItemRect(0, 0).x > rtl_keyboard.GetItemRect(0, 9).x);
+	const Rect page_rect = rtl_keyboard.GetItemRect(8, 6);
+	const Rect done_rect = rtl_keyboard.GetItemRect(8, 8);
+	CHECK(done_rect.x < page_rect.x);
+	CHECK(page_rect.x < rtl_keyboard.GetItemRect(0, 0).x);
+	CHECK(done_rect.x < rtl_keyboard.GetContents()->GetWidth() / 2);
+	CHECK(page_rect.x < rtl_keyboard.GetContents()->GetWidth() / 2);
+
+	// LEFT advances visually left, RIGHT moves back right, and wrapping skips holes.
+	auto selection = Keyboard::GetNextSelection(Keyboard::Symbol, 0, 0, 0, -1, true);
+	CHECK(selection == std::make_pair(0, 1)); // $A -> $B
+	selection = Keyboard::GetNextSelection(Keyboard::Symbol, selection.first, selection.second,
+			0, 1, true);
+	CHECK(selection == std::make_pair(0, 0));
+	selection = Keyboard::GetNextSelection(Keyboard::Symbol, 0, 0, 0, 1, true);
+	CHECK(selection == std::make_pair(0, 9)); // Wrap to the visual left edge.
+	selection = Keyboard::GetNextSelection(Keyboard::Symbol, 0, 9, 0, -1, true);
+	CHECK(selection == std::make_pair(0, 0));
+	selection = Keyboard::GetNextSelection(Keyboard::Symbol, 5, 0, 0, -1, true);
+	CHECK(selection == std::make_pair(5, 5)); // Empty cells 1-4 are skipped.
+	selection = Keyboard::GetNextSelection(Keyboard::Symbol, 8, 6, 0, -1, true);
+	CHECK(selection == std::make_pair(8, 8)); // Page -> Done.
+	selection = Keyboard::GetNextSelection(Keyboard::Symbol, 8, 8, 0, 1, true);
+	CHECK(selection == std::make_pair(8, 6)); // Done -> Page.
+
+	// The same Symbol mode remains LTR when the owning session is non-RTL.
+	Keyboard ltr_keyboard(0, 0);
+	ltr_keyboard.SetMode(Keyboard::Letter, Keyboard::Symbol);
+	CHECK_FALSE(Keyboard::IsRtlLayout(Keyboard::Symbol));
+	ltr_keyboard.SetMode(Keyboard::Symbol, Keyboard::Letter);
+	CHECK(ltr_keyboard.GetSelected() == "$A");
+	CHECK(ltr_keyboard.GetItemRect(0, 0).x < ltr_keyboard.GetItemRect(0, 9).x);
+	CHECK(ltr_keyboard.GetItemRect(8, 6).x < ltr_keyboard.GetItemRect(8, 8).x);
+	CHECK(Keyboard::GetNextSelection(Keyboard::Symbol, 0, 0, 0, 1) == std::make_pair(0, 1));
+}
+
 TEST_CASE("Arabic digits retain logical Western order and mirror visually") {
 	using Keyboard = Window_Keyboard;
 	const auto& layout = Keyboard::layouts[Keyboard::Arabic];

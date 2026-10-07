@@ -222,10 +222,12 @@ Keyboard_Layout Window_Keyboard::layouts[Window_Keyboard::MODE_END] = {
 	}
 };
 
-Window_Keyboard::Window_Keyboard(int ix, int iy, int iwidth, int iheight, const char* ndone_text)
+Window_Keyboard::Window_Keyboard(int ix, int iy, int iwidth, int iheight,
+		const char* ndone_text, bool rtl_session)
 		: Window_Base(ix, iy, iwidth, iheight)
 		, done_text(ndone_text)
 		, play_cursor(false)
+		, rtl_session(rtl_session)
 {
 	row = 0;
 	col = 0;
@@ -249,17 +251,19 @@ void Window_Keyboard::SetMode(Window_Keyboard::Mode nmode, Window_Keyboard::Mode
 	UpdateCursorRect();
 }
 
-bool Window_Keyboard::IsRtlLayout(Window_Keyboard::Mode mode) {
-	return mode == Arabic;
+bool Window_Keyboard::IsRtlLayout(Window_Keyboard::Mode mode, bool rtl_session) {
+	return mode == Arabic || rtl_session;
 }
 
-int Window_Keyboard::LogicalToVisualColumn(Window_Keyboard::Mode mode, int logical_col) {
-	return IsRtlLayout(mode) ? col_max - 1 - logical_col : logical_col;
+int Window_Keyboard::LogicalToVisualColumn(Window_Keyboard::Mode mode, int logical_col,
+		bool rtl_session) {
+	return IsRtlLayout(mode, rtl_session) ? col_max - 1 - logical_col : logical_col;
 }
 
-int Window_Keyboard::GetItemStartVisualColumn(Window_Keyboard::Mode mode, int row, int logical_col) {
-	int visual_col = LogicalToVisualColumn(mode, logical_col);
-	if (!IsRtlLayout(mode)) {
+int Window_Keyboard::GetItemStartVisualColumn(Window_Keyboard::Mode mode, int row,
+		int logical_col, bool rtl_session) {
+	int visual_col = LogicalToVisualColumn(mode, logical_col, rtl_session);
+	if (!IsRtlLayout(mode, rtl_session)) {
 		return visual_col;
 	}
 
@@ -267,13 +271,14 @@ int Window_Keyboard::GetItemStartVisualColumn(Window_Keyboard::Mode mode, int ro
 	// column. In a mirrored layout their visual left edge is the latter column.
 	const auto& key = layouts[mode].items[row][logical_col];
 	if (key == SPACE || key == NEXT_PAGE || key == DONE) {
-		return LogicalToVisualColumn(mode, logical_col + 1);
+		return LogicalToVisualColumn(mode, logical_col + 1, rtl_session);
 	}
 	return visual_col;
 }
 
 std::pair<int, int> Window_Keyboard::GetNextSelection(Window_Keyboard::Mode mode,
-		int row, int logical_col, int vertical_delta, int visual_horizontal_delta) {
+		int row, int logical_col, int vertical_delta, int visual_horizontal_delta,
+		bool rtl_session) {
 	const auto& layout = layouts[mode];
 	if (vertical_delta != 0) {
 		const int step = vertical_delta < 0 ? -1 : 1;
@@ -295,7 +300,7 @@ std::pair<int, int> Window_Keyboard::GetNextSelection(Window_Keyboard::Mode mode
 
 	if (visual_horizontal_delta != 0) {
 		const int visual_step = visual_horizontal_delta < 0 ? -1 : 1;
-		const int logical_step = IsRtlLayout(mode) ? -visual_step : visual_step;
+		const int logical_step = IsRtlLayout(mode, rtl_session) ? -visual_step : visual_step;
 		for (int distance = 1; distance <= col_max; ++distance) {
 			const int candidate_col = (logical_col + logical_step * distance + col_max) % col_max;
 			if (!layout.items[row][candidate_col].empty()) {
@@ -330,7 +335,7 @@ std::string const& Window_Keyboard::GetSelected() const {
 }
 
 Rect Window_Keyboard::GetItemRect(int row, int col) const {
-	const int visual_col = GetItemStartVisualColumn(mode, row, col);
+	const int visual_col = GetItemStartVisualColumn(mode, row, col, rtl_session);
 	return Rect(visual_col * col_spacing + border_x,
 				row * row_spacing + border_y,
 				Text::GetSize(*Font::Default(), GetKey(row, col)).width + 8,
@@ -360,19 +365,19 @@ void Window_Keyboard::Update() {
 	if (active) {
 		if (Input::IsRepeated(Input::DOWN)) {
 			play_cursor = true;
-			std::tie(row, col) = GetNextSelection(mode, row, col, 1, 0);
+			std::tie(row, col) = GetNextSelection(mode, row, col, 1, 0, rtl_session);
 		}
 		if (Input::IsRepeated(Input::UP)) {
 			play_cursor = true;
-			std::tie(row, col) = GetNextSelection(mode, row, col, -1, 0);
+			std::tie(row, col) = GetNextSelection(mode, row, col, -1, 0, rtl_session);
 		}
 		if (Input::IsRepeated(Input::RIGHT)) {
 			play_cursor = true;
-			std::tie(row, col) = GetNextSelection(mode, row, col, 0, 1);
+			std::tie(row, col) = GetNextSelection(mode, row, col, 0, 1, rtl_session);
 		}
 		if (Input::IsRepeated(Input::LEFT)) {
 			play_cursor = true;
-			std::tie(row, col) = GetNextSelection(mode, row, col, 0, -1);
+			std::tie(row, col) = GetNextSelection(mode, row, col, 0, -1, rtl_session);
 		}
 	}
 
