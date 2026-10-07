@@ -44,6 +44,11 @@ This release is experimental and should be considered a pre-release.
 3. Run `Player.exe` from the game folder. Arabic is selected automatically when
 an Arabic language pack is available.
 
+EasyRPG-Arabic defaults project text encoding to Windows-1256 (CP1256), so
+Arabic projects normally do not need `Encoding=1256` in `RPG_RT.ini`. You can
+still override the encoding with `[EasyRPG] Encoding=...` in `RPG_RT.ini` or
+with `--encoding ...` on the command line.
+
 For optional widescreen rendering, run:
 
 ```powershell

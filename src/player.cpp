@@ -1395,7 +1395,7 @@ void Player::SetupBattleTest() {
 std::string Player::GetEncoding() {
 	encoding = forced_encoding;
 
-	// command line > ini > detection > current locale
+	// command line > ini > Arabic-fork default
 	if (encoding.empty()) {
 		std::string ini = FileFinder::Game().FindFile(INI_NAME);
 		auto ini_stream = FileFinder::Game().OpenInputStream(ini);
@@ -1404,7 +1404,11 @@ std::string Player::GetEncoding() {
 		}
 	}
 
-	if (encoding.empty() || encoding == "auto") {
+	if (encoding.empty()) {
+		encoding = "1256";
+	}
+
+	if (encoding == "auto") {
 		encoding = "";
 
 		std::string ldb = FileFinder::Game().FindFile(fileext_map.MakeFilename(RPG_RT_PREFIX, SUFFIX_LDB));
