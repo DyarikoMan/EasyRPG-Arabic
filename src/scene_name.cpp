@@ -57,7 +57,7 @@ Scene_Name_WindowGeometry GetSceneNameWindowGeometry(bool rtl_session,
 Scene_Name_KeyboardPages BuildSceneNameKeyboardPages(bool arabic_session, int charset,
 		std::vector<Window_Keyboard::Mode> charset_pages) {
 	if (arabic_session) {
-		return {{Window_Keyboard::Arabic, Window_Keyboard::Letter, Window_Keyboard::Symbol}, 0};
+		return {{Window_Keyboard::Arabic, Window_Keyboard::Symbol}, 0};
 	}
 
 	charset_pages.push_back(Window_Keyboard::Letter);

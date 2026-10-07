@@ -5,17 +5,20 @@
 
 TEST_SUITE_BEGIN("Scene_Name");
 
-TEST_CASE("Arabic page sequence starts with Arabic and cycles to Letter and Symbol") {
+TEST_CASE("Arabic page sequence starts with Arabic and cycles directly to Symbol") {
 	const auto pages = BuildSceneNameKeyboardPages(true, 2, {});
 	REQUIRE_EQ(pages.initial_index, 0);
-	REQUIRE_EQ(pages.modes.size(), 3);
+	REQUIRE_EQ(pages.modes.size(), 2);
+	CHECK((pages.modes == std::vector<Window_Keyboard::Mode>{
+		Window_Keyboard::Arabic, Window_Keyboard::Symbol
+	}));
 	CHECK(pages.modes[pages.initial_index] == Window_Keyboard::Arabic);
-	CHECK(pages.modes[(pages.initial_index + 1) % pages.modes.size()] == Window_Keyboard::Letter);
-	CHECK(pages.modes[(pages.initial_index + 2) % pages.modes.size()] == Window_Keyboard::Symbol);
-	CHECK(pages.modes[(pages.initial_index + 3) % pages.modes.size()] == Window_Keyboard::Arabic);
+	CHECK(pages.modes[(pages.initial_index + 1) % pages.modes.size()] == Window_Keyboard::Symbol);
+	CHECK(pages.modes[(pages.initial_index + 2) % pages.modes.size()] == Window_Keyboard::Arabic);
+	CHECK(std::find(pages.modes.begin(), pages.modes.end(), Window_Keyboard::Letter) == pages.modes.end());
 }
 
-TEST_CASE("Non-Arabic page sequence preserves charset selection") {
+TEST_CASE("Non-Arabic page sequence preserves charset selection and Letter/Symbol pages") {
 	const auto pages = BuildSceneNameKeyboardPages(false, 1, {
 		Window_Keyboard::Hiragana, Window_Keyboard::Katakana
 	});

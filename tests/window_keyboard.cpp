@@ -63,9 +63,10 @@ TEST_CASE("Arabic keyboard mirrors logical columns and wide control anchors") {
 TEST_CASE("Window_Keyboard starts Arabic at alef on the visual top-right") {
 	MockGame game(MockMap::eNone);
 	Window_Keyboard keyboard(0, 0);
-	keyboard.SetMode(Window_Keyboard::Arabic, Window_Keyboard::Letter);
+	keyboard.SetMode(Window_Keyboard::Arabic, Window_Keyboard::Symbol);
 
 	CHECK(keyboard.GetSelected() == "ا");
+	CHECK(keyboard.GetKey(8, 6) == Window_Keyboard::layouts[Window_Keyboard::Symbol].key_text);
 	CHECK(keyboard.GetCursorRect().x == keyboard.GetItemRect(0, 0).x);
 	CHECK(keyboard.GetCursorRect().y == keyboard.GetItemRect(0, 0).y - 2);
 	CHECK(keyboard.GetItemRect(0, 0).x > keyboard.GetItemRect(0, 9).x);
@@ -85,9 +86,11 @@ TEST_CASE("Window_Keyboard starts Arabic at alef on the visual top-right") {
 	CHECK(keyboard.GetItemRect(0, 0).x < keyboard.GetItemRect(0, 9).x);
 	keyboard.SetMode(Window_Keyboard::Symbol, Window_Keyboard::Arabic);
 	CHECK(keyboard.GetSelected() == "$A");
+	CHECK(keyboard.GetKey(8, 6) == Window_Keyboard::layouts[Window_Keyboard::Arabic].key_text);
 	CHECK(keyboard.GetItemRect(0, 0).x < keyboard.GetItemRect(0, 9).x);
-	keyboard.SetMode(Window_Keyboard::Arabic, Window_Keyboard::Letter);
+	keyboard.SetMode(Window_Keyboard::Arabic, Window_Keyboard::Symbol);
 	CHECK(keyboard.GetSelected() == "ا");
+	CHECK(keyboard.GetKey(8, 6) == Window_Keyboard::layouts[Window_Keyboard::Symbol].key_text);
 	CHECK(keyboard.GetCursorRect().x == keyboard.GetItemRect(0, 0).x);
 }
 
@@ -175,8 +178,8 @@ TEST_CASE("Non-Arabic keyboard geometry and navigation stay left-to-right") {
 	CHECK(Keyboard::GetNextSelection(Keyboard::Hangul1, 7, 7, 1, 0) == std::make_pair(8, 6));
 	CHECK(Keyboard::GetNextSelection(Keyboard::Hangul1, 7, 9, 1, 0) == std::make_pair(8, 8));
 
-	// Switching to LTR pages changes their geometry/direction while preserving
-	// the normal Arabic -> Letter -> Symbol cycle's selected logical cell.
+	// Switching between keyboard modes changes their geometry/direction while
+	// preserving the selected logical cell.
 	CHECK(Keyboard::GetItemStartVisualColumn(Keyboard::Letter, 8, 6) == 6);
 	CHECK(Keyboard::GetItemStartVisualColumn(Keyboard::Symbol, 8, 6) == 6);
 	CHECK(Keyboard::GetItemStartVisualColumn(Keyboard::Arabic, 8, 6) == 2);
