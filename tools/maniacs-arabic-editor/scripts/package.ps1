@@ -2,7 +2,6 @@ $ErrorActionPreference = 'Stop'
 
 $toolRoot = Split-Path -Parent $PSScriptRoot
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $toolRoot '..\..'))
-$hookDll = Join-Path $toolRoot 'build\Release\EasyCmdTos.dll'
 $packagePlugin = Join-Path $toolRoot 'Plugin'
 $distDir = Join-Path $toolRoot 'dist'
 $stageDir = Join-Path $toolRoot 'build\package-stage'
@@ -75,10 +74,7 @@ function Remove-PeDebugMetadata([string]$Path) {
 	[System.IO.File]::WriteAllBytes($Path, $bytes)
 }
 
-if (-not (Test-Path -LiteralPath $hookDll -PathType Leaf)) {
-	throw "Build the Release x86 hook first; missing $hookDll"
-}
-foreach ($name in @('EasyRpgCommands.dll', '0Harmony.dll')) {
+foreach ($name in @('EasyCmdTos.dll', 'EasyRpgCommands.dll', '0Harmony.dll')) {
 	if (-not (Test-Path -LiteralPath (Join-Path $packagePlugin $name) -PathType Leaf)) {
 		throw "Package runtime is incomplete: missing Plugin\$name"
 	}
@@ -99,13 +95,18 @@ foreach ($name in $rootFiles) {
 	Copy-Item -LiteralPath (Join-Path $toolRoot $name) -Destination $resolvedStage
 }
 Copy-Item -LiteralPath (Join-Path $repoRoot 'COPYING') -Destination $resolvedStage
-Copy-Item -LiteralPath $hookDll -Destination (Join-Path $resolvedStage 'Plugin\EasyCmdTos.dll')
-Copy-Item -LiteralPath (Join-Path $packagePlugin 'EasyRpgCommands.dll') -Destination (Join-Path $resolvedStage 'Plugin\EasyRpgCommands.dll')
-Copy-Item -LiteralPath (Join-Path $packagePlugin '0Harmony.dll') -Destination (Join-Path $resolvedStage 'Plugin\0Harmony.dll')
+foreach ($name in @('EasyCmdTos.dll', 'EasyRpgCommands.dll', '0Harmony.dll')) {
+	Copy-Item -LiteralPath (Join-Path $packagePlugin $name) -Destination (Join-Path $resolvedStage "Plugin\$name")
+}
+Remove-PeDebugMetadata (Join-Path $resolvedStage 'Plugin\EasyCmdTos.dll')
 Remove-PeDebugMetadata (Join-Path $resolvedStage 'Plugin\0Harmony.dll')
 Copy-Item -LiteralPath (Join-Path $toolRoot 'third_party\easyrpgcommands\COPYING') -Destination (Join-Path $resolvedStage 'licenses\EasyRpgCommands-COPYING')
 Copy-Item -LiteralPath (Join-Path $toolRoot 'third_party\harmony\LICENSE') -Destination (Join-Path $resolvedStage 'licenses\Harmony-LICENSE')
 Copy-Item -LiteralPath (Join-Path $toolRoot 'third_party\minhook\LICENSE.txt') -Destination (Join-Path $resolvedStage 'licenses\MinHook-LICENSE.txt')
+
+if (Get-ChildItem -LiteralPath $resolvedStage -Recurse -File -Filter '*.pdb') {
+	throw 'The package staging directory must not contain PDB files.'
+}
 
 if (Test-Path -LiteralPath $zipPath -PathType Leaf) { Remove-Item -LiteralPath $zipPath -Force }
 Compress-Archive -Path (Join-Path $resolvedStage '*') -DestinationPath $zipPath -CompressionLevel Optimal

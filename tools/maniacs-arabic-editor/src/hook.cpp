@@ -8,6 +8,8 @@
 
 static_assert(sizeof(void*) == 4, "The Maniacs editor hook is x86 only.");
 
+bool InitializeTOverEditSupport();
+
 namespace {
 
 using ExtTextOutAFunction = BOOL(WINAPI*)(
@@ -93,16 +95,6 @@ bool DecodeLikelyArabicCp1256(const char* text, UINT length, std::wstring& decod
 	return true;
 }
 
-void DebugMessage(const char* message) {
-#ifdef MANIACS_ARABIC_DEBUG_LOG
-	OutputDebugStringA("[Maniacs Arabic Editor] ");
-	OutputDebugStringA(message);
-	OutputDebugStringA("\r\n");
-#else
-	(void)message;
-#endif
-}
-
 BOOL WINAPI HookExtTextOutA(
 	HDC device_context,
 	int x,
@@ -134,7 +126,7 @@ BOOL WINAPI HookExtTextOutA(
 				);
 			}
 		} catch (...) {
-			DebugMessage("Arabic text conversion failed; using ExtTextOutA.");
+			// Fall through to the original ANSI call if conversion allocation fails.
 		}
 	}
 
@@ -153,19 +145,16 @@ BOOL WINAPI HookExtTextOutA(
 bool InstallExtTextOutHook() {
 	const MH_STATUS initialize_status = MH_Initialize();
 	if (initialize_status != MH_OK && initialize_status != MH_ERROR_ALREADY_INITIALIZED) {
-		DebugMessage("MinHook initialization failed.");
 		return false;
 	}
 
 	HMODULE gdi_module = GetModuleHandleW(L"gdi32.dll");
 	if (gdi_module == nullptr) {
-		DebugMessage("gdi32.dll is not loaded.");
 		return false;
 	}
 
 	FARPROC target = GetProcAddress(gdi_module, "ExtTextOutA");
 	if (target == nullptr) {
-		DebugMessage("ExtTextOutA was not found.");
 		return false;
 	}
 
@@ -175,18 +164,14 @@ bool InstallExtTextOutHook() {
 		reinterpret_cast<LPVOID*>(&original_ext_text_out_a)
 	);
 	if (create_status != MH_OK) {
-		DebugMessage("MinHook could not create the ExtTextOutA hook.");
 		return false;
 	}
 
 	const MH_STATUS enable_status = MH_EnableHook(reinterpret_cast<LPVOID>(target));
 	if (enable_status != MH_OK) {
 		MH_RemoveHook(reinterpret_cast<LPVOID>(target));
-		DebugMessage("MinHook could not enable the ExtTextOutA hook.");
 		return false;
 	}
-
-	DebugMessage("ExtTextOutA hook installed.");
 	return true;
 }
 
@@ -196,9 +181,11 @@ extern "C" BOOL WINAPI InitializeArabicTextHook() {
 	try {
 		std::call_once(hook_initialization_once, []() {
 			hook_initialization_succeeded = InstallExtTextOutHook();
+			if (hook_initialization_succeeded) {
+				(void)InitializeTOverEditSupport();
+			}
 		});
 	} catch (...) {
-		DebugMessage("Hook initialization failed unexpectedly.");
 		return FALSE;
 	}
 	return hook_initialization_succeeded ? TRUE : FALSE;

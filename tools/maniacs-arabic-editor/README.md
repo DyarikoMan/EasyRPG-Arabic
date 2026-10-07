@@ -1,14 +1,23 @@
 # Maniacs Arabic Editor Patch
 
-1. Install RPG Maker 2003 with the Maniacs Patch.
-2. Extract this ZIP, then run `install.bat`. Select the Maniacs folder containing `rpg2003.exe`.
-3. Start Maniacs and set **Text Encoding** to **Arabic (Windows)**.
-4. Type Arabic normally, then use EasyRPG-Arabic to run the game.
+## Supported Arabic text
 
-The Event Editor command list and some Database lists render Arabic. Some older
-text-entry fields may still show mojibake; the saved project data remains correct.
+The patch supports Arabic rendering in the Event Editor command list and tested
+Database lists. It also supports Arabic input and display in Maniacs
+`TOverEdit` controls, including normal typing and Ctrl+V paste. Tested fields
+include Actor Name/Nickname and Item Name/Description; other input controls are
+not yet verified.
 
-To remove the patch, run `uninstall.bat` and select the same Maniacs folder.
-Existing files are backed up before replacement. Uninstall restores those files
-or removes patch files it installed, and retains its backups under
-`.ManiacsArabicEditor\backups` in the Maniacs folder.
+Set Maniacs **Text Encoding** to **Arabic (Windows)**. EasyRPG-Arabic defaults
+projects to CP1256, so `Encoding=1256` is normally unnecessary; users can still
+override the project encoding.
+
+## Install
+
+Extract this ZIP, run `install.bat`, and select the Maniacs folder containing
+`rpg2003.exe`. The installer backs up conflicting plugin files before copying
+the patch files.
+
+To uninstall, run `uninstall.bat` and select the same folder. It restores
+backed-up files or removes files the patch added; backups remain under
+`.ManiacsArabicEditor\backups`.
