@@ -51,6 +51,7 @@ public:
 		RuCyrl,
 		Letter,
 		Symbol,
+		Arabic,
 		MODE_END
 	};
 

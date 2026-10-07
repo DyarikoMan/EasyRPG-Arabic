@@ -18,10 +18,25 @@
 #ifndef EP_SCENE_NAME_H
 #define EP_SCENE_NAME_H
 
+#include <vector>
+
 #include "scene.h"
 #include "window_name.h"
 #include "window_face.h"
 #include "window_keyboard.h"
+
+struct Scene_Name_KeyboardPages {
+	std::vector<Window_Keyboard::Mode> modes;
+	int initial_index;
+};
+
+/**
+ * Builds the page sequence for the name keyboard.
+ * Arabic sessions always start on Arabic; other sessions retain the charset
+ * pages and requested initial index passed by the caller.
+ */
+Scene_Name_KeyboardPages BuildSceneNameKeyboardPages(bool arabic_session, int charset,
+		std::vector<Window_Keyboard::Mode> charset_pages);
 
 /**
  * Scene_Item class.

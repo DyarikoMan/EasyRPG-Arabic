@@ -16,6 +16,7 @@
  */
 
 #include <cassert>
+#include <utility>
 
 #include "scene_name.h"
 #include "game_actors.h"
@@ -23,6 +24,18 @@
 #include "input.h"
 #include "player.h"
 #include "output.h"
+#include "translation.h"
+
+Scene_Name_KeyboardPages BuildSceneNameKeyboardPages(bool arabic_session, int charset,
+		std::vector<Window_Keyboard::Mode> charset_pages) {
+	if (arabic_session) {
+		return {{Window_Keyboard::Arabic, Window_Keyboard::Letter, Window_Keyboard::Symbol}, 0};
+	}
+
+	charset_pages.push_back(Window_Keyboard::Letter);
+	charset_pages.push_back(Window_Keyboard::Symbol);
+	return {std::move(charset_pages), charset};
+}
 
 Scene_Name::Scene_Name(Game_Actor& actor, int charset, bool use_default_name)
 	: layout_index(charset), use_default_name(use_default_name), actor(actor)
@@ -49,36 +62,40 @@ void Scene_Name::Start() {
 	name_window->Set(use_default_name ? ToString(actor.GetName()) : "");
 	name_window->Refresh();
 
+	const bool arabic_session = Tr::IsRtlLanguage();
 	const char* done = Window_Keyboard::DONE;
-	// Japanese pages
-	if (Player::IsCP932()) {
-		layouts.push_back(Window_Keyboard::Hiragana);
-		layouts.push_back(Window_Keyboard::Katakana);
-		done = Window_Keyboard::DONE_JP;
-	// Korean pages
-	} else if (Player::IsCP949()) {
-		layouts.push_back(Window_Keyboard::Hangul1);
-		layouts.push_back(Window_Keyboard::Hangul2);
-		done = Window_Keyboard::DONE_KO;
-	// Simp. Chinese pages
-	} else if (Player::IsCP936()) {
-		layouts.push_back(Window_Keyboard::ZhCn1);
-		layouts.push_back(Window_Keyboard::ZhCn2);
-		done = Window_Keyboard::DONE_ZH_CN;
-	// Trad. Chinese pages
-	} else if (Player::IsBig5()) {
-		layouts.push_back(Window_Keyboard::ZhTw1);
-		layouts.push_back(Window_Keyboard::ZhTw2);
-		done = Window_Keyboard::DONE_ZH_TW;
-	// Cyrillic page (we assume it's Russian since we have no way to detect Serbian etc.)
-	} else if (Player::IsCP1251()) {
-		layouts.push_back(Window_Keyboard::RuCyrl);
-		done = Window_Keyboard::DONE_RU;
+	std::vector<Window_Keyboard::Mode> charset_pages;
+	if (!arabic_session) {
+		// Japanese pages
+		if (Player::IsCP932()) {
+			charset_pages.push_back(Window_Keyboard::Hiragana);
+			charset_pages.push_back(Window_Keyboard::Katakana);
+			done = Window_Keyboard::DONE_JP;
+		// Korean pages
+		} else if (Player::IsCP949()) {
+			charset_pages.push_back(Window_Keyboard::Hangul1);
+			charset_pages.push_back(Window_Keyboard::Hangul2);
+			done = Window_Keyboard::DONE_KO;
+		// Simp. Chinese pages
+		} else if (Player::IsCP936()) {
+			charset_pages.push_back(Window_Keyboard::ZhCn1);
+			charset_pages.push_back(Window_Keyboard::ZhCn2);
+			done = Window_Keyboard::DONE_ZH_CN;
+		// Trad. Chinese pages
+		} else if (Player::IsBig5()) {
+			charset_pages.push_back(Window_Keyboard::ZhTw1);
+			charset_pages.push_back(Window_Keyboard::ZhTw2);
+			done = Window_Keyboard::DONE_ZH_TW;
+		// Cyrillic page (we assume it's Russian since we have no way to detect Serbian etc.)
+		} else if (Player::IsCP1251()) {
+			charset_pages.push_back(Window_Keyboard::RuCyrl);
+			done = Window_Keyboard::DONE_RU;
+		}
 	}
 
-	// Letter and symbol pages are used everywhere
-	layouts.push_back(Window_Keyboard::Letter);
-	layouts.push_back(Window_Keyboard::Symbol);
+	auto page_selection = BuildSceneNameKeyboardPages(arabic_session, layout_index, std::move(charset_pages));
+	layouts = std::move(page_selection.modes);
+	layout_index = page_selection.initial_index;
 	kbd_window.reset(new Window_Keyboard(Player::menu_offset_x + margin_x, Player::menu_offset_y + window_face_height + margin_y, window_keyboard_width, window_keyboard_height, done));
 
 	auto next_index = layout_index + 1;
