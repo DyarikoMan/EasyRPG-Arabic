@@ -28,6 +28,35 @@ CMake is the only supported way to build Player. On Windows all dependencies
 must be installed with [vcpkg].
 
 
+## Windows build (EasyRPG-Arabic)
+
+Requirements: Visual Studio 2022 with C++ development tools, CMake, Git, and the
+EasyRPG [buildscripts] prebuilt Windows dependencies.
+
+From PowerShell:
+
+```powershell
+cd C:\Dev
+git clone https://github.com/EasyRPG/buildscripts.git
+
+cd C:\Dev\buildscripts\windows
+.\download_prebuilt.cmd
+
+$env:EASYRPG_BUILDSCRIPTS = "C:\Dev\buildscripts"
+cd C:\Dev\EasyRPG-Arabic
+
+cmake --preset windows-x64-vs2022-release `
+  -DPLAYER_BUILD_LIBLCF=ON
+
+cmake --build .\build\windows-x64-vs2022-release `
+  --config Release `
+  -j 8
+```
+
+Alternatively, run `setup_env.cmd` in `C:\Dev\buildscripts\windows` to set
+`EASYRPG_BUILDSCRIPTS` persistently. The executable is
+`build\windows-x64-vs2022-release\Release\Player.exe`.
+
 ## libretro core
 
 Additional commands required before building:
