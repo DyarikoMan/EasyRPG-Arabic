@@ -18,6 +18,8 @@
 #ifndef EP_WINDOW_KEYBOARD_H
 #define EP_WINDOW_KEYBOARD_H
 
+#include <utility>
+
 #include "window_base.h"
 
 struct Keyboard_Layout;
@@ -62,6 +64,16 @@ public:
 	void SetMode(Mode nmode, Mode nnext_mode);
 	std::string const& GetKey(int row, int col) const;
 	std::string const& GetSelected() const;
+
+	/**
+	 * Keyboard geometry and navigation helpers. Horizontal deltas are visual
+	 * directions (negative is left, positive is right).
+	 */
+	static bool IsRtlLayout(Mode mode);
+	static int LogicalToVisualColumn(Mode mode, int logical_col);
+	static int GetItemStartVisualColumn(Mode mode, int row, int logical_col);
+	static std::pair<int, int> GetNextSelection(Mode mode, int row, int logical_col,
+			int vertical_delta, int visual_horizontal_delta);
 
 	static const char* const DONE;
 	static const char* const SPACE;

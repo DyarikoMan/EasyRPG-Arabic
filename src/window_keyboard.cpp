@@ -16,7 +16,7 @@
  */
 
 #include <string>
-#include <algorithm>
+#include <tuple>
 
 #include "window_keyboard.h"
 #include "game_system.h"
@@ -237,6 +237,64 @@ void Window_Keyboard::SetMode(Window_Keyboard::Mode nmode, Window_Keyboard::Mode
 	UpdateCursorRect();
 }
 
+bool Window_Keyboard::IsRtlLayout(Window_Keyboard::Mode mode) {
+	return mode == Arabic;
+}
+
+int Window_Keyboard::LogicalToVisualColumn(Window_Keyboard::Mode mode, int logical_col) {
+	return IsRtlLayout(mode) ? col_max - 1 - logical_col : logical_col;
+}
+
+int Window_Keyboard::GetItemStartVisualColumn(Window_Keyboard::Mode mode, int row, int logical_col) {
+	int visual_col = LogicalToVisualColumn(mode, logical_col);
+	if (!IsRtlLayout(mode)) {
+		return visual_col;
+	}
+
+	// In the logical layout these controls occupy their column and the next
+	// column. In a mirrored layout their visual left edge is the latter column.
+	const auto& key = layouts[mode].items[row][logical_col];
+	if (key == SPACE || key == NEXT_PAGE || key == DONE) {
+		return LogicalToVisualColumn(mode, logical_col + 1);
+	}
+	return visual_col;
+}
+
+std::pair<int, int> Window_Keyboard::GetNextSelection(Window_Keyboard::Mode mode,
+		int row, int logical_col, int vertical_delta, int visual_horizontal_delta) {
+	const auto& layout = layouts[mode];
+	if (vertical_delta != 0) {
+		const int step = vertical_delta < 0 ? -1 : 1;
+		for (int distance = 1; distance <= row_max; ++distance) {
+			const int candidate_row = (row + step * distance + row_max) % row_max;
+			const auto& key = layout.items[candidate_row][logical_col];
+			if (!key.empty()) {
+				return {candidate_row, logical_col};
+			}
+			if (logical_col > 0) {
+				const auto& previous_key = layout.items[candidate_row][logical_col - 1];
+				if (previous_key == SPACE || previous_key == NEXT_PAGE || previous_key == DONE) {
+					return {candidate_row, logical_col - 1};
+				}
+			}
+		}
+		return {row, logical_col};
+	}
+
+	if (visual_horizontal_delta != 0) {
+		const int visual_step = visual_horizontal_delta < 0 ? -1 : 1;
+		const int logical_step = IsRtlLayout(mode) ? -visual_step : visual_step;
+		for (int distance = 1; distance <= col_max; ++distance) {
+			const int candidate_col = (logical_col + logical_step * distance + col_max) % col_max;
+			if (!layout.items[row][candidate_col].empty()) {
+				return {row, candidate_col};
+			}
+		}
+	}
+
+	return {row, logical_col};
+}
+
 std::string const& Window_Keyboard::GetKey(int row, int col) const {
 	std::string const& str = layouts[mode].items[row][col];
 	if (str == NEXT_PAGE) {
@@ -255,7 +313,8 @@ std::string const& Window_Keyboard::GetSelected() const {
 }
 
 Rect Window_Keyboard::GetItemRect(int row, int col) const {
-	return Rect(col * col_spacing + border_x,
+	const int visual_col = GetItemStartVisualColumn(mode, row, col);
+	return Rect(visual_col * col_spacing + border_x,
 				row * row_spacing + border_y,
 				Text::GetSize(*Font::Default(), GetKey(row, col)).width + 8,
 				row_spacing);
@@ -281,41 +340,23 @@ void Window_Keyboard::Refresh() {
 void Window_Keyboard::Update() {
 	Window_Base::Update();
 
-	// move left on wide fields
-	int skip_dir = -1;
-
 	if (active) {
 		if (Input::IsRepeated(Input::DOWN)) {
 			play_cursor = true;
-			row = (row + 1) % row_max;
+			std::tie(row, col) = GetNextSelection(mode, row, col, 1, 0);
 		}
 		if (Input::IsRepeated(Input::UP)) {
 			play_cursor = true;
-			row = (row + row_max - 1) % row_max;
+			std::tie(row, col) = GetNextSelection(mode, row, col, -1, 0);
 		}
 		if (Input::IsRepeated(Input::RIGHT)) {
 			play_cursor = true;
-			col = (col + 1) % col_max;
-			skip_dir = 1;
+			std::tie(row, col) = GetNextSelection(mode, row, col, 0, 1);
 		}
 		if (Input::IsRepeated(Input::LEFT)) {
 			play_cursor = true;
-			col = (col + col_max - 1) % col_max;
+			std::tie(row, col) = GetNextSelection(mode, row, col, 0, -1);
 		}
-	}
-
-	// Special handling for wide fields
-	if (col > 0) {
-		// page switch and done are always in the bottom right corner
-		if ((row == row_max - 1 && (col == col_max - 3 || col == col_max - 1))
-			|| GetKey(row, col - 1) == SPACE)
-			col = std::min(col + skip_dir, col_max - 1);
-	}
-
-	// Skip empty cells
-	if (GetSelected().empty()) {
-		Update();
-		return;
 	}
 
 	if (play_cursor) {
