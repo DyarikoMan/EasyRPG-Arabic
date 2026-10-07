@@ -52,10 +52,11 @@ Window_Name::TextDrawLayout Window_Name::GetTextDrawLayout(bool rtl_layout, int 
 	};
 }
 
-int Window_Name::GetCaretX(bool rtl_layout, int contents_width, int shaped_text_width) {
-	// A total width cannot map the logical end through mixed BiDi runs.
+int Window_Name::GetCaretX(bool rtl_layout, int contents_width, int shaped_text_width,
+		int logical_end_offset) {
 	if (rtl_layout) {
-		return contents_width - name_text_margin - shaped_text_width - name_cursor_width;
+		return contents_width - name_text_margin - shaped_text_width +
+			logical_end_offset - name_cursor_width;
 	}
 	return shaped_text_width + name_text_margin;
 }
@@ -85,7 +86,11 @@ void Window_Name::Append(std::string_view text) {
 
 void Window_Name::Update() {
 	Rect const name_size = Text::GetSize(*Font::Default(), name);
-	SetCursorRect(Rect(GetCaretX(rtl_layout, contents->GetWidth(), name_size.width), 0, 16, 16));
+	const int logical_end_offset = rtl_layout
+		? Text::GetLogicalEndCaretOffset(*Font::Default(), name)
+		: 0;
+	SetCursorRect(Rect(GetCaretX(rtl_layout, contents->GetWidth(), name_size.width,
+			logical_end_offset), 0, 16, 16));
 }
 
 void Window_Name::Erase() {

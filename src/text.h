@@ -115,6 +115,13 @@ namespace Text {
 	Rect GetSize(const Font& font, std::string_view text);
 
 	/**
+	 * Finds the visual x offset of the logical end of text, measured from the
+	 * left edge of its rendered line. RTL paragraphs use ICU visual runs and
+	 * the same HarfBuzz shaping widths as Draw/GetSize.
+	 */
+	int GetLogicalEndCaretOffset(const Font& font, std::string_view text);
+
+	/**
 	 * Determines the size of a bitmap required to render a single character.
 	 * The dimensions of the Rect describe a bounding box to fit the character.
 	 * For continuous rendering use the "width" property.

@@ -3,6 +3,7 @@
 #include "cache.h"
 #include "bitmap.h"
 #include "font.h"
+#include "window_name.h"
 #include <iostream>
 #include <string>
 #include <utility>
@@ -158,6 +159,40 @@ TEST_CASE("TextBidiVisualOrderAndMixedRuns") {
 	Text::GetSize(font, "RPG Maker 2003 خدام مزيان");
 	CHECK(HasShapeCall(font, U"RPG Maker 2003", Font::ShapeDirection::LTR));
 	CHECK(HasShapeCall(font, U"خدام مزيان", Font::ShapeDirection::RTL));
+}
+
+TEST_CASE("Logical end caret offset follows ICU visual runs in RTL name strings") {
+	BidiVisualOrderTestFont font;
+	const std::pair<const char*, bool> cases[] = {
+		{"محمد", false},
+		{"أحمد", false},
+		{"عبد الرحمن", false},
+		{"مُحَمَّد", false},
+		{"محمد123", true},
+		{"محمدABC", true},
+		{"ABCمحمد", false},
+		{"عبد Player", true},
+		{"Player عبد", false},
+	};
+
+	for (const auto& [value, logical_end_after_visual_left] : cases) {
+		const int text_width = Text::GetSize(font, value).width;
+		const int logical_end_offset = Text::GetLogicalEndCaretOffset(font, value);
+		CHECK(logical_end_offset >= 0);
+		CHECK(logical_end_offset <= text_width);
+		if (logical_end_after_visual_left) {
+			CHECK(logical_end_offset > 0);
+		} else {
+			CHECK(logical_end_offset == 0);
+		}
+
+		constexpr int contents_width = 200;
+		CHECK(Window_Name::GetCaretX(true, contents_width, text_width, logical_end_offset) ==
+			contents_width - 2 - text_width + logical_end_offset - 16);
+	}
+
+	// Without Arabic script, the logical end is the right edge of the LTR run.
+	CHECK(Text::GetLogicalEndCaretOffset(font, "Player") == Text::GetSize(font, "Player").width);
 }
 
 TEST_CASE("GlyphRenderUsesGlobalVerticalOffset") {

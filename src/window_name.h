@@ -40,7 +40,8 @@ public:
 
 	bool IsRtlLayout() const;
 	static TextDrawLayout GetTextDrawLayout(bool rtl_layout, int contents_width);
-	static int GetCaretX(bool rtl_layout, int contents_width, int shaped_text_width);
+	static int GetCaretX(bool rtl_layout, int contents_width, int shaped_text_width,
+			int logical_end_offset = 0);
 
 	/**
 	 * Renders the current name on the window.

@@ -26,7 +26,7 @@ TEST_CASE("Arabic layout contains the requested character set") {
 		CHECK(std::find(keys.begin(), keys.end(), key) != keys.end());
 	}
 
-	const std::vector<std::string> excluded = {"گ", "ڤ", "پ", "چ", "ژ", "٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"};
+	const std::vector<std::string> excluded = {"گ", "ڤ", "پ", "چ", "ژ", "ٰ", "٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"};
 	for (const auto& key : excluded) {
 		CHECK(std::find(keys.begin(), keys.end(), key) == keys.end());
 	}
@@ -92,6 +92,30 @@ TEST_CASE("Window_Keyboard starts Arabic at alef on the visual top-right") {
 	CHECK(keyboard.GetSelected() == "ا");
 	CHECK(keyboard.GetKey(8, 6) == Window_Keyboard::layouts[Window_Keyboard::Symbol].key_text);
 	CHECK(keyboard.GetCursorRect().x == keyboard.GetItemRect(0, 0).x);
+}
+
+TEST_CASE("Arabic name input displays Arabic labels and preserves control sentinels") {
+	MockGame game(MockMap::eNone);
+	Window_Keyboard keyboard(0, 0);
+
+	keyboard.SetMode(Window_Keyboard::Arabic, Window_Keyboard::Symbol);
+	CHECK(keyboard.GetSelected() == "ا");
+	CHECK(keyboard.GetKey(7, 0) == "مسافة");
+	CHECK(keyboard.GetKey(8, 8) == "تم");
+	CHECK(keyboard.GetKey(8, 6) == Window_Keyboard::layouts[Window_Keyboard::Symbol].key_text);
+	CHECK(Window_Keyboard::layouts[Window_Keyboard::Arabic].items[7][0] == Window_Keyboard::SPACE);
+	CHECK(Window_Keyboard::layouts[Window_Keyboard::Arabic].items[8][8] == Window_Keyboard::DONE);
+
+	keyboard.SetMode(Window_Keyboard::Symbol, Window_Keyboard::Arabic);
+	CHECK(keyboard.GetKey(8, 8) == "تم");
+	CHECK(keyboard.GetKey(8, 6) == Window_Keyboard::layouts[Window_Keyboard::Arabic].key_text);
+	CHECK(Window_Keyboard::layouts[Window_Keyboard::Symbol].items[8][8] == Window_Keyboard::DONE);
+
+	keyboard.SetMode(Window_Keyboard::Letter, Window_Keyboard::Symbol);
+	CHECK(keyboard.GetKey(7, 0) == Window_Keyboard::SPACE);
+	CHECK(keyboard.GetKey(8, 8) == Window_Keyboard::DONE);
+	keyboard.SetMode(Window_Keyboard::Symbol, Window_Keyboard::Letter);
+	CHECK(keyboard.GetKey(8, 8) == Window_Keyboard::DONE);
 }
 
 TEST_CASE("Arabic keyboard navigation follows visual directions and skips empty cells") {

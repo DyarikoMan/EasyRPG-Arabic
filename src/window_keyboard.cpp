@@ -33,6 +33,18 @@ const char* const Window_Keyboard::DONE_KO = "<결정>";
 const char* const Window_Keyboard::DONE_ZH_CN = "<确定>";
 const char* const Window_Keyboard::DONE_ZH_TW = "<確定>";
 
+namespace {
+
+const std::string arabic_space_label = "مسافة";
+const std::string arabic_done_label = "تم";
+
+bool IsArabicNameInputMode(Window_Keyboard::Mode mode, Window_Keyboard::Mode next_mode) {
+	return mode == Window_Keyboard::Arabic ||
+		(mode == Window_Keyboard::Symbol && next_mode == Window_Keyboard::Arabic);
+}
+
+} // namespace
+
 /*
  * Hiragana <-> Katakana; Hangul 1 <-> Hangul 2; Simp. Chinese 1 <-> Simp. Chinese 2;
  * Trad. Chinese 1 <-> Trad. Chinese 2; Rus.Cyrillic <-> Rus.Latin; letter <-> symbol
@@ -301,7 +313,12 @@ std::string const& Window_Keyboard::GetKey(int row, int col) const {
 		return layouts[next_mode].key_text;
 	}
 	else if (str == DONE) {
+		if (IsArabicNameInputMode(mode, next_mode)) {
+			return arabic_done_label;
+		}
 		return done_text;
+	} else if (str == SPACE && mode == Arabic) {
+		return arabic_space_label;
 	}
 	else {
 		return str;

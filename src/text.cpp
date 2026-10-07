@@ -51,12 +51,18 @@ bool ContainsArabicScript(std::u32string_view text) {
 	return false;
 }
 
-std::vector<Font::ShapeRet> ShapeWithBidi(const Font& font, std::u32string_view text) {
+std::vector<Font::ShapeRet> ShapeWithBidi(const Font& font, std::u32string_view text,
+		int* logical_end_offset = nullptr) {
 	if (!ContainsArabicScript(text)) {
 		return font.Shape(text);
 	}
 
-	const auto shape_rtl = [&font, text]() {
+	const auto shape_rtl = [&font, text, logical_end_offset]() {
+		if (logical_end_offset) {
+			// The fallback shapes the whole paragraph as an RTL run, whose
+			// logical end is at the visual left edge.
+			*logical_end_offset = 0;
+		}
 		return font.Shape(text, Font::ShapeDirection::RTL);
 	};
 
@@ -99,6 +105,9 @@ std::vector<Font::ShapeRet> ShapeWithBidi(const Font& font, std::u32string_view 
 
 	std::vector<Font::ShapeRet> shaped_text;
 	bool bidi_succeeded = true;
+	bool logical_end_found = false;
+	int visual_run_x = 0;
+	int mapped_logical_end_offset = 0;
 	for (int32_t visual_run = 0; visual_run < run_count; ++visual_run) {
 		int32_t logical_start = 0;
 		int32_t run_length = 0;
@@ -127,10 +136,26 @@ std::vector<Font::ShapeRet> ShapeWithBidi(const Font& font, std::u32string_view 
 			? Font::ShapeDirection::RTL
 			: Font::ShapeDirection::LTR;
 		auto shaped_run = font.Shape(run32, shape_direction);
+		int run_width = 0;
+		for (const auto& glyph : shaped_run) {
+			run_width += font.GetSize(glyph).width;
+		}
+		if (logical_start + run_length == text16_length) {
+			mapped_logical_end_offset = visual_run_x +
+				(direction == UBIDI_RTL ? 0 : run_width);
+			logical_end_found = true;
+		}
+		visual_run_x += run_width;
 		shaped_text.insert(shaped_text.end(), shaped_run.begin(), shaped_run.end());
 	}
 
-	return bidi_succeeded ? shaped_text : shape_rtl();
+	if (!bidi_succeeded || !logical_end_found) {
+		return shape_rtl();
+	}
+	if (logical_end_offset) {
+		*logical_end_offset = mapped_logical_end_offset;
+	}
+	return shaped_text;
 }
 
 int GetShapedTextWidth(const Font& font, const std::vector<Font::ShapeRet>& shaped_text) {
@@ -393,6 +418,59 @@ Rect Text::GetSize(const Font& font, std::string_view text) {
 	}
 
 	return rect;
+}
+
+int Text::GetLogicalEndCaretOffset(const Font& font, std::string_view text) {
+	if (!font.CanShape()) {
+		const auto text32 = Utils::DecodeUTF32(text);
+		return ContainsArabicScript(text32) ? 0 : GetSize(font, text).width;
+	}
+
+	int visual_prefix_width = 0;
+	std::u32string text32;
+	const auto measure_segment = [&font](std::u32string_view segment, int& width) {
+		int logical_end_offset = -1;
+		const auto shaped = ShapeWithBidi(font, segment, &logical_end_offset);
+		if (ContainsArabicScript(segment)) {
+			width = GetShapedTextWidth(font, shaped);
+		} else {
+			Rect size;
+			AddShapedTextSize(size, font, shaped, false);
+			width = size.width;
+			logical_end_offset = width;
+		}
+		return logical_end_offset;
+	};
+
+	auto iter = text.data();
+	const auto end = iter + text.size();
+	while (iter != end) {
+		auto ret = Utils::TextNext(iter, end, 0);
+		iter = ret.next;
+		if (EP_UNLIKELY(!ret)) {
+			continue;
+		}
+
+		if (ret.is_exfont) {
+			if (!text32.empty()) {
+				int segment_width = 0;
+				measure_segment(text32, segment_width);
+				visual_prefix_width += segment_width;
+				text32.clear();
+			}
+			visual_prefix_width += GetSize(font, ret.ch, true).width;
+		} else {
+			text32 += ret.ch;
+		}
+	}
+
+	if (text32.empty()) {
+		return visual_prefix_width;
+	}
+
+	int segment_width = 0;
+	const int logical_end_offset = measure_segment(text32, segment_width);
+	return visual_prefix_width + logical_end_offset;
 }
 
 Rect Text::GetSize(const Font& font, char32_t glyph, bool is_exfont) {
