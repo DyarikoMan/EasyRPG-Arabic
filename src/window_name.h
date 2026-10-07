@@ -28,10 +28,19 @@
  */
 class Window_Name :	public Window_Base {
 public:
+	struct TextDrawLayout {
+		int anchor_x;
+		bool align_right;
+	};
+
 	/**
 	 * Constructor.
 	 */
-	Window_Name(int ix, int iy, int iwidth, int iheight);
+	Window_Name(int ix, int iy, int iwidth, int iheight, bool rtl_layout);
+
+	bool IsRtlLayout() const;
+	static TextDrawLayout GetTextDrawLayout(bool rtl_layout, int contents_width);
+	static int GetCaretX(bool rtl_layout, int contents_width, int shaped_text_width);
 
 	/**
 	 * Renders the current name on the window.
@@ -47,6 +56,9 @@ public:
 
 protected:
 	std::string name;
+
+private:
+	const bool rtl_layout;
 };
 
 inline const std::string& Window_Name::Get() const {

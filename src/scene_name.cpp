@@ -82,7 +82,8 @@ void Scene_Name::Start() {
 	face_window->Set(actor);
 	face_window->Refresh();
 
-	name_window.reset(new Window_Name(geometry.name_x, geometry.name_y, geometry.name_width, geometry.name_height));
+	name_window.reset(new Window_Name(geometry.name_x, geometry.name_y,
+			geometry.name_width, geometry.name_height, arabic_session));
 	name_window->Set(use_default_name ? ToString(actor.GetName()) : "");
 	name_window->Refresh();
 
