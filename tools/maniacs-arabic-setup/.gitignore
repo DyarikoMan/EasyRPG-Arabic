@@ -1,0 +1,5 @@
+!dist/EasyRPG-Arabic-Setup.exe
+**/bin/
+**/obj/
+/legacy-prototype/
+/dist/Maniacs-Arabic-Setup-Windows/

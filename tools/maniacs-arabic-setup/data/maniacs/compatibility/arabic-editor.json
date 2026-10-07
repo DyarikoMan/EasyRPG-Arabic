@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "arabic-editor-1.0.0",
+  "patchVersion": "1.0.0",
+  "validatedRecipeIds": [
+    "maniacs-241029"
+  ],
+  "validationEvidence": {
+    "maniacs-241029": "Validated lab and Steam release: startup rendering hook, Event Editor and Database lists, TOverEdit input/display, typing, paste, and installer package."
+  }
+}

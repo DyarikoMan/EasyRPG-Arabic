@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>EasyRPG-Arabic-Setup</AssemblyName>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ApplicationIcon />
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Setup.Core\Setup.Core.csproj" />
+    <EmbeddedResource Include="..\..\..\maniacs-arabic-editor\dist\Maniacs-Arabic-Editor-Windows-x86.zip"
+                      LogicalName="EasyRpgArabic.Setup.ArabicEditor.zip" />
+  </ItemGroup>
+</Project>

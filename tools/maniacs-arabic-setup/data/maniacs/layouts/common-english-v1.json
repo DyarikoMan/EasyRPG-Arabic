@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "common-english-v1",
+  "displayName": "Maniacs Common + English package layout v1",
+  "requiredDirectories": [
+    "Common",
+    "English",
+    "English/Plugin",
+    "Japanese",
+    "Japanese/Plugin"
+  ],
+  "requiredFiles": [
+    { "path": "utility.exe", "architecture": "x86" },
+    { "path": "command_code.txt" },
+    { "path": "LICENSE.txt" },
+    { "path": "readme.txt" },
+    { "path": "update.txt" },
+    { "path": "vexpr.txt" },
+    { "path": "Common/accord.dll", "architecture": "x86" },
+    { "path": "Common/backupper.exe", "architecture": "x86" },
+    { "path": "Common/battle_command_list.txt" },
+    { "path": "Common/cmdcs.dll", "architecture": "x86" },
+    { "path": "Common/cmdl_editor.exe", "architecture": "x86" },
+    { "path": "Common/command_list.txt" },
+    { "path": "Common/Footy2.dll", "architecture": "x86" },
+    { "path": "English/cmdTos.dll", "architecture": "x86" },
+    { "path": "English/patch.exe", "architecture": "x86" },
+    { "path": "English/RPG_RT.exe", "architecture": "x64" },
+    { "path": "Japanese/cmdTos.dll", "architecture": "x86" },
+    { "path": "Japanese/patch.exe", "architecture": "x86" },
+    { "path": "Japanese/RPG_RT.exe", "architecture": "x64" },
+    { "path": "Japanese/rpg_rt.ldb.dat" }
+  ],
+  "architectureRoles": {
+    "editorAndPlugins": { "path": "Common/cmdcs.dll", "expected": "x86" },
+    "gameRuntime": { "path": "English/RPG_RT.exe", "expected": "x64" }
+  },
+  "buildDetectors": [
+    { "path": "update.txt", "pattern": "(?m)^\\s*(?<build>\\d{4}/\\d{2}/\\d{2})\\s*$", "group": "build" }
+  ]
+}

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\data\maniacs\layouts\*.json" LogicalName="EasyRpgArabic.Setup.Core.Maniacs.Data.layouts.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\data\maniacs\recipes\*.json" LogicalName="EasyRpgArabic.Setup.Core.Maniacs.Data.recipes.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\data\maniacs\compatibility\*.json" LogicalName="EasyRpgArabic.Setup.Core.Maniacs.Data.compatibility.%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>
