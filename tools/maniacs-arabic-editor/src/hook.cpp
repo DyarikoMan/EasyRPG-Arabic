@@ -9,6 +9,7 @@
 static_assert(sizeof(void*) == 4, "The Maniacs editor hook is x86 only.");
 
 bool InitializeTOverEditSupport();
+bool InitializeProjectRuntimeSupport();
 
 namespace {
 
@@ -183,6 +184,7 @@ extern "C" BOOL WINAPI InitializeArabicTextHook() {
 			hook_initialization_succeeded = InstallExtTextOutHook();
 			if (hook_initialization_succeeded) {
 				(void)InitializeTOverEditSupport();
+				(void)InitializeProjectRuntimeSupport();
 			}
 		});
 	} catch (...) {

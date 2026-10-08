@@ -58,7 +58,8 @@ The base installation is an immutable input node, not an installable module:
 vanilla-rm2003
   ├── maniacs
   │     └── maniacs-english
-  │             └── arabic-editor
+  │             ├── arabic-editor
+  │             └── easyrpg-arabic
   └── easyrpg-arabic
 ```
 
@@ -74,7 +75,7 @@ an explicit predecessor/backup relationship.
 | `maniacs` | Validate the exact user-supplied package and vanilla source, copy only recipe-listed vanilla editor files (and observed optional helpers), then apply the Common files and license to staging. | Functional for exact recipe `maniacs-241029`; verifies source/package hashes and editor architectures. |
 | `maniacs-english` | Copy the recipe-mapped English payload, preserve `rpg2003.OLD`, apply the embedded WDiff delta to staged `rpg2003.exe`, and verify the output. | Functional for exact recipe `maniacs-241029`; it does not launch `patch.exe`. |
 | `arabic-editor` | Install the three existing editor DLLs and set the managed install's `Plugin/cmdcs.xml` Text Encoding to Arabic (Windows) / CP1256. Preserve previous plugin settings and restore them on uninstall when unchanged. | Module apply/verify/rollback is implemented. Planner blocks it until `maniacs-english` is available. |
-| `easyrpg-arabic` | Add the EasyRPG-Arabic Player runtime as a separately managed component; verify its executable and version. | Not implemented in this setup. |
+| `easyrpg-arabic` | Install the bundled EasyRPG-Arabic x64 Player as managed-root `Player.exe`, keeping Maniacs `RPG_RT.exe` unchanged. The Arabic Editor hook copies Player into newly created projects and redirects Play/Test Play when a project-local Player exists. | Functional for the pinned Player payload and its declared Maniacs build. |
 
 The existing Arabic Editor ZIP stays at
 `tools/maniacs-arabic-editor/dist/Maniacs-Arabic-Editor-Windows-x86.zip` and is
@@ -108,6 +109,20 @@ patch as validated. The recipe and compatibility data remain separate from the
 generic parser and module code; a future release using the same WDiff format can
 normally be added with new fingerprints and recipe values.
 
+The bundled Player's version, source commit, x64 architecture, size, SHA-256,
+target path, and required Maniacs build are recorded in
+`data/easyrpg-arabic/player.json`. The application embeds the Player binary
+from the Release build output; installation checks its size, hash, and PE
+architecture before changing staging. The managed root keeps the validated
+Maniacs `RPG_RT.exe` and adds `Player.exe`. Observed behavior confirms that
+Maniacs copies its root `RPG_RT.exe` into a new project and launches that
+project-local executable from the yellow Play button. The Arabic Editor hook
+uses the successful root-runtime copy to add `Player.exe`, then redirects that
+same Play/Test Play process-creation request to the project-local Player while
+preserving its arguments and startup parameters and setting the project as the
+working directory. If the project has no Player, the original runtime launch
+is passed through unchanged. Existing projects are not enumerated or modified.
+
 Adding a release should normally require a layout update only if its structure
 changed, a new recipe with build markers and package fingerprints, and a
 compatibility entry after Arabic Editor validation. Generic parsing, planning,
@@ -122,8 +137,7 @@ and UI code should not gain release-specific version branches.
    editor executable. Capture source fingerprints for audit; never write to the
    source.
 3. Resolve selected modules and prerequisites in topological dependency order.
-   The planner blocks unavailable modules, including the not-yet-implemented
-   EasyRPG-Arabic Player runtime.
+   The planner blocks unavailable modules.
 4. Build into a unique sibling staging folder. Apply modules in dependency
    order, recording each operation and checking its verifier before proceeding.
 5. Write managed installation state into the stage, then perform final
@@ -200,8 +214,8 @@ detects Steam installs, offers Browse, shows the recommended modules, and has
 an expandable **Advanced options** destination field. It does not require
 Visual Studio, CMake, Git, BAT use, or manual DLL copying from users.
 
-The Maniacs, English, and Arabic Editor modules are ready when the exact
-user-supplied 241029 package is selected and accepted. EasyRPG-Arabic Player
-integration remains unavailable. The setup distribution must not contain
-proprietary Steam RPG Maker or Maniacs files without clear redistribution
-permission.
+All four modules are ready when the exact user-supplied 241029 package is
+selected and accepted. EasyRPG-Arabic is bundled from this repository's Release
+build and checked against its payload manifest. The setup distribution must
+not contain proprietary Steam RPG Maker or Maniacs files without clear
+redistribution permission.

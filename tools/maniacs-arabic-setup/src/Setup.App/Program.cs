@@ -9,7 +9,7 @@ internal static class Program
 	private static void Main()
 	{
 		ApplicationConfiguration.Initialize();
-		var modules = RecommendedSetupModules.Create(OpenArabicEditorPackage);
+		var modules = RecommendedSetupModules.Create(OpenArabicEditorPackage, OpenEasyRpgArabicPlayer, EasyRpgArabicPlayerPayload.LoadEmbedded());
 		var detector = new SteamRpgMaker2003Detector(new SteamRegistryLibrarySource());
 		Application.Run(new MainForm(detector, modules));
 	}
@@ -17,4 +17,8 @@ internal static class Program
 	private static Stream OpenArabicEditorPackage() =>
 		typeof(Program).Assembly.GetManifestResourceStream("EasyRpgArabic.Setup.ArabicEditor.zip")
 		?? throw new FileNotFoundException("The Arabic Editor release ZIP is not embedded in this setup executable.");
+
+	private static Stream OpenEasyRpgArabicPlayer() =>
+		typeof(Program).Assembly.GetManifestResourceStream("EasyRpgArabic.Setup.EasyRpgArabic.Player.exe")
+		?? throw new FileNotFoundException("The EasyRPG-Arabic Player payload is not embedded in this setup executable.");
 }

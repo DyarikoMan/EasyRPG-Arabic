@@ -6,6 +6,8 @@ namespace EasyRpgArabic.Setup.Core.Modules;
 
 internal static class ManiacsModuleSupport
 {
+	public static void ValidateRelativeInstallPath(string path) => ManiacsRecipeCatalog.ValidateRelativePath(path);
+
 	public static (string PackageRoot, ManiacsVersionRecipe Recipe) GetValidatedPackage(
 		SetupModuleContext context,
 		ManiacsPackageInspector inspector,

@@ -102,6 +102,7 @@ internal sealed class MainForm : Form
 				ModuleReadiness.Unavailable => "Unavailable",
 				_ when descriptor.Id is "maniacs" or "maniacs-english" => "Ready · exact supported package required",
 				_ when descriptor.Id == "arabic-editor" => "Ready · requires Maniacs English",
+				_ when descriptor.Id == "easyrpg-arabic" => "Ready · x64 Player template for new projects",
 				_ => descriptor.StatusMessage
 			};
 			var status = new Label { Text = statusText, TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill, ForeColor = descriptor.Readiness == ModuleReadiness.Available ? Color.DarkGreen : Color.DarkOrange };

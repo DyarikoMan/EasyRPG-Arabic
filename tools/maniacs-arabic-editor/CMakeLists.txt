@@ -24,7 +24,7 @@ target_include_directories(minhook
 	PRIVATE "${MINHOOK_DIR}/src" "${MINHOOK_DIR}/src/hde"
 )
 
-add_library(EasyCmdTos SHARED src/hook.cpp src/toveredit_support.cpp src/EasyCmdTos.def)
+add_library(EasyCmdTos SHARED src/hook.cpp src/project_runtime_support.cpp src/toveredit_support.cpp src/EasyCmdTos.def)
 target_compile_features(EasyCmdTos PRIVATE cxx_std_17)
 target_include_directories(EasyCmdTos PRIVATE "${MINHOOK_DIR}/include")
 target_compile_definitions(EasyCmdTos PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)

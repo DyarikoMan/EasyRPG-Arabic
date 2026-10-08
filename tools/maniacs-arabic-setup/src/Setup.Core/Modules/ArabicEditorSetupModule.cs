@@ -268,7 +268,9 @@ public sealed class ArabicEditorSetupModule : ISetupModule
 		var payload = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
 		foreach (var fileName in PayloadFiles)
 		{
-			var entry = archive.GetEntry($"Plugin/{fileName}")
+			var expectedEntryName = $"Plugin/{fileName}";
+			var entry = archive.Entries.FirstOrDefault(candidate =>
+				string.Equals(candidate.FullName.Replace('\\', '/'), expectedEntryName, StringComparison.OrdinalIgnoreCase))
 				?? throw new InvalidDataException($"The Arabic Editor release ZIP is missing Plugin/{fileName}.");
 			using var entryStream = entry.Open();
 			using var memory = new MemoryStream();
@@ -329,7 +331,7 @@ public sealed class ArabicEditorSetupModule : ISetupModule
 	}
 }
 
-public static class RecommendedSetupModules
+public static partial class RecommendedSetupModules
 {
 	public static IReadOnlyList<ISetupModule> Create(Func<Stream> openArabicEditorPackage)
 	{

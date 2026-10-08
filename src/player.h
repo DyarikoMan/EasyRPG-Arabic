@@ -272,6 +272,11 @@ namespace Player {
 	 */
 	bool IsCP1251();
 
+	/**
+	 * @return true if the selected encoding is Windows-1256
+	 */
+	bool IsCP1256();
+
 	/** @return true when engine is 2k3 or the 2k3-commands patch is enabled */
 	bool IsRPG2k3Commands();
 

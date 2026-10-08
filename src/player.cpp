@@ -1161,7 +1161,10 @@ const bool arabic_translation =
 language_id == "ar" ||
 language_code.rfind("ar", 0) == 0;
 
+const bool arabic_font = arabic_translation || IsCP1256();
 const int bundled_font_size = arabic_translation ? 16 : 12;
+bool loaded_gothic = false;
+bool loaded_mincho = false;
 
 // First RPG Maker font slot.
 auto gothic = FileFinder::OpenFont("Font");
@@ -1171,14 +1174,15 @@ player_config.font1.SetLocked(ft != nullptr);
 
 if (ft) {
 Font::SetDefault(ft, false);
+loaded_gothic = true;
 }
 }
 
 // Second RPG Maker font slot.
 auto mincho = FileFinder::OpenFont("Font2");
 
-// For Arabic, one bundled font is enough.
-if (!mincho && arabic_translation) {
+// For Arabic, one game-provided font is enough.
+if (!mincho && arabic_font) {
 mincho = FileFinder::OpenFont("Font");
 }
 
@@ -1188,8 +1192,46 @@ player_config.font2.SetLocked(ft != nullptr);
 
 if (ft) {
 Font::SetDefault(ft, true);
+loaded_mincho = true;
 }
 }
+
+// CP1256 games may not contain an Arabic language resource tree. On Windows,
+// use an installed system font when the project and user configuration do not
+// provide fonts.
+#ifdef _WIN32
+const bool needs_gothic = !loaded_gothic && player_config.font1.Get().empty();
+const bool needs_mincho = !loaded_mincho && player_config.font2.Get().empty();
+if (arabic_font && (needs_gothic || needs_mincho)) {
+	wchar_t windows_dir[MAX_PATH + 1] = {};
+	const UINT windows_dir_len = GetWindowsDirectoryW(windows_dir, MAX_PATH);
+	if (windows_dir_len > 0 && windows_dir_len < MAX_PATH) {
+		const auto windows_path = Utils::FromWideString(std::wstring(windows_dir, windows_dir_len));
+		const auto fonts_path = FileFinder::MakePath(windows_path, "Fonts");
+		for (const auto font_name : {"arial.ttf", "tahoma.ttf", "segoeui.ttf"}) {
+			const auto font_path = FileFinder::MakePath(fonts_path, font_name);
+			auto system_font = FileFinder::Root().OpenInputStream(font_path);
+			if (!system_font) {
+				continue;
+			}
+
+			auto ft = Font::CreateFtFont(std::move(system_font), bundled_font_size, false, false);
+			if (!ft) {
+				continue;
+			}
+
+			if (!loaded_gothic && player_config.font1.Get().empty()) {
+				Font::SetDefault(ft, false);
+			}
+			if (!loaded_mincho && player_config.font2.Get().empty()) {
+				Font::SetDefault(ft, true);
+			}
+			Output::Debug("Using Windows Arabic-capable font: {}", font_path);
+			break;
+		}
+	}
+}
+#endif
 #endif
 }
 
@@ -1701,6 +1743,17 @@ bool Player::IsCP1251() {
 	}
 
 	return (encoding == "ibm-5347_P100-1998" || encoding == "windows-1251" || encoding == "1251");
+}
+
+bool Player::IsCP1256() {
+	std::string normalized = Utils::LowerCase(encoding);
+	normalized.erase(std::remove_if(normalized.begin(), normalized.end(), [](char c) {
+		return !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'));
+	}), normalized.end());
+
+	return normalized == "1256" || normalized == "cp1256" ||
+		normalized == "windows1256" || normalized == "xcp1256" ||
+		normalized.rfind("ibm1256", 0) == 0;
 }
 
 int Player::EngineVersion() {

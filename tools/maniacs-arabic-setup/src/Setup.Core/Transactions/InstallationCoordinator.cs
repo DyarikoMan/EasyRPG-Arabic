@@ -82,7 +82,8 @@ public sealed class InstallationCoordinator
 					item.Module.Descriptor.Id,
 					item.Result.VersionOverride ?? item.Module.Descriptor.Version,
 					ComputeModuleFingerprint(item.Module.Descriptor, item.Result),
-					item.Result.OwnedFiles)).ToArray()
+					item.Result.OwnedFiles,
+					item.Module.Descriptor.Architecture)).ToArray()
 			};
 			await SetupStateStore.WriteAsync(transaction.StagingDirectory, state, cancellationToken).ConfigureAwait(false);
 			await transaction.CommitAsync(replaceExisting, cancellationToken).ConfigureAwait(false);
@@ -107,6 +108,7 @@ public sealed class InstallationCoordinator
 		var content = new StringBuilder()
 			.Append(descriptor.Id).Append('\n')
 			.Append(result.VersionOverride ?? descriptor.Version).Append('\n')
+			.Append(descriptor.Architecture ?? string.Empty).Append('\n')
 			.AppendJoin(',', descriptor.Dependencies.OrderBy(value => value, StringComparer.OrdinalIgnoreCase)).Append('\n');
 		foreach (var file in result.OwnedFiles.OrderBy(file => file.RelativePath, StringComparer.OrdinalIgnoreCase))
 		{

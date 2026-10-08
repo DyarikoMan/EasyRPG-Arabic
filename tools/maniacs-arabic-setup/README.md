@@ -8,16 +8,25 @@ staged in a separate managed folder.
 
 The modular installer can install the validated 2024-10-29 Maniacs package and
 its English editor patch from a user-supplied extracted package, then install
-the existing Arabic Editor ZIP. It never launches `utility.exe` or
-`patch.exe`: it applies the recipe's verified Common payload and reads the
-English patch's WDiff delta directly. Before staging, the installer shows the
-package's `LICENSE.txt` and asks the user to accept it. Unknown builds, changed
-fingerprints, and changed layouts stop for validation. EasyRPG-Arabic Player
-installation is still not implemented and remains visibly unavailable.
+the existing Arabic Editor ZIP and bundled EasyRPG-Arabic Player. It never
+launches `utility.exe` or `patch.exe`: it applies the recipe's verified Common
+payload and reads the English patch's WDiff delta directly. The managed root
+keeps Maniacs `RPG_RT.exe` unchanged and installs EasyRPG-Arabic as `Player.exe`.
+The editor hook copies `Player.exe` into projects created afterward and redirects
+Play/Test Play to that project-local Player when present; projects without it
+continue to use their original `RPG_RT.exe`. Existing projects are not changed.
+Before staging, the installer shows the Maniacs package's `LICENSE.txt` and asks
+the user to accept it. Unknown builds, changed fingerprints, and changed layouts
+stop for validation.
 
-Build or republish the executable from a Windows machine with the .NET 8 SDK:
+Build the Release Player first, then publish the setup executable from a
+Windows machine with the validated EasyRPG buildscripts toolchain and .NET 8
+SDK. The setup embeds the Player binary and verifies it against
+`data/easyrpg-arabic/player.json`.
 
 ```powershell
+cmake --preset windows-x64-vs2022-release -DPLAYER_BUILD_LIBLCF=ON
+cmake --build .\build\windows-x64-vs2022-release --config Release -j 8
 .\packaging\publish.ps1
 ```
 

@@ -9,7 +9,8 @@ public sealed record InstalledModuleState(
 	string Id,
 	string Version,
 	string ManifestHash,
-	IReadOnlyList<ModuleOwnedFile> Files);
+	IReadOnlyList<ModuleOwnedFile> Files,
+	string? Architecture = null);
 
 public sealed record SetupState
 {

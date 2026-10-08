@@ -14,5 +14,7 @@
     <ProjectReference Include="..\Setup.Core\Setup.Core.csproj" />
     <EmbeddedResource Include="..\..\..\maniacs-arabic-editor\dist\Maniacs-Arabic-Editor-Windows-x86.zip"
                       LogicalName="EasyRpgArabic.Setup.ArabicEditor.zip" />
+    <EmbeddedResource Include="..\..\..\..\build\windows-x64-vs2022-release\Release\Player.exe"
+                      LogicalName="EasyRpgArabic.Setup.EasyRpgArabic.Player.exe" />
   </ItemGroup>
 </Project>

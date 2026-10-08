@@ -14,7 +14,8 @@ public sealed record SetupModuleDescriptor(
 	IReadOnlyList<string> Dependencies,
 	IReadOnlyList<string> Prerequisites,
 	ModuleReadiness Readiness,
-	string StatusMessage);
+	string StatusMessage,
+	string? Architecture = null);
 
 public sealed record SetupModuleContext(
 	string VanillaDirectory,
