@@ -195,6 +195,17 @@ TEST_CASE("Logical end caret offset follows ICU visual runs in RTL name strings"
 	CHECK(Text::GetLogicalEndCaretOffset(font, "Player") == Text::GetSize(font, "Player").width);
 }
 
+TEST_CASE("RTL caret offset stops before a trailing ExFont icon") {
+	BidiVisualOrderTestFont font;
+	const int arabic_width = Text::GetSize(font, "محمد").width;
+	const int icon_width = Text::GetSize(font, "$A").width;
+
+	CHECK(Text::GetLogicalEndCaretOffset(font, "$A") == 0);
+	CHECK(Text::GetLogicalEndCaretOffset(font, "محمد$A") == arabic_width);
+	CHECK(Text::GetLogicalEndCaretOffset(font, "محمد$A$B") == arabic_width + icon_width);
+	CHECK(Text::GetLogicalEndCaretOffset(font, "$Aمحمد") == icon_width);
+}
+
 TEST_CASE("GlyphRenderUsesGlobalVerticalOffset") {
 	Bitmap::SetFormat(format_R8G8B8A8_a().format());
 	BidiVisualOrderTestFont font;

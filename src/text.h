@@ -117,7 +117,8 @@ namespace Text {
 	/**
 	 * Finds the visual x offset of the logical end of text, measured from the
 	 * left edge of its rendered line. RTL paragraphs use ICU visual runs and
-	 * the same HarfBuzz shaping widths as Draw/GetSize.
+	 * the same HarfBuzz shaping widths as Draw/GetSize. A trailing ExFont token
+	 * resolves to the token's visual leading edge so the caret sits before it.
 	 */
 	int GetLogicalEndCaretOffset(const Font& font, std::string_view text);
 

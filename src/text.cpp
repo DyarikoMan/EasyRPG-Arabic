@@ -422,11 +422,42 @@ Rect Text::GetSize(const Font& font, std::string_view text) {
 
 int Text::GetLogicalEndCaretOffset(const Font& font, std::string_view text) {
 	if (!font.CanShape()) {
-		const auto text32 = Utils::DecodeUTF32(text);
-		return ContainsArabicScript(text32) ? 0 : GetSize(font, text).width;
+		// Preserve the existing unshaped RTL offset within each text segment,
+		// while accounting for ExFont tokens as separately rendered glyphs.
+		int visual_prefix_width = 0;
+		int trailing_exfont_width = 0;
+		std::u32string text32;
+		auto iter = text.data();
+		const auto end = iter + text.size();
+		while (iter != end) {
+			const auto ret = Utils::TextNext(iter, end, 0);
+			if (ret.next <= iter) {
+				break;
+			}
+			iter = ret.next;
+
+			if (ret.is_exfont) {
+				if (!text32.empty()) {
+					visual_prefix_width += GetSize(font, Utils::EncodeUTF(text32)).width;
+					text32.clear();
+				}
+				trailing_exfont_width = GetSize(font, ret.ch, true).width;
+				visual_prefix_width += trailing_exfont_width;
+			} else {
+				text32 += ret.ch;
+				trailing_exfont_width = 0;
+			}
+		}
+
+		if (text32.empty()) {
+			return visual_prefix_width - trailing_exfont_width;
+		}
+		const int segment_width = GetSize(font, Utils::EncodeUTF(text32)).width;
+		return visual_prefix_width + (ContainsArabicScript(text32) ? 0 : segment_width);
 	}
 
 	int visual_prefix_width = 0;
+	int trailing_exfont_width = 0;
 	std::u32string text32;
 	const auto measure_segment = [&font](std::u32string_view segment, int& width) {
 		int logical_end_offset = -1;
@@ -458,14 +489,19 @@ int Text::GetLogicalEndCaretOffset(const Font& font, std::string_view text) {
 				visual_prefix_width += segment_width;
 				text32.clear();
 			}
-			visual_prefix_width += GetSize(font, ret.ch, true).width;
+			trailing_exfont_width = GetSize(font, ret.ch, true).width;
+			visual_prefix_width += trailing_exfont_width;
 		} else {
 			text32 += ret.ch;
+			trailing_exfont_width = 0;
 		}
 	}
 
 	if (text32.empty()) {
-		return visual_prefix_width;
+		// Text::Draw emits an ExFont glyph after the preceding shaped segment.
+		// Its visual leading edge is therefore the insertion point for an RTL
+		// name ending with that token.
+		return visual_prefix_width - trailing_exfont_width;
 	}
 
 	int segment_width = 0;

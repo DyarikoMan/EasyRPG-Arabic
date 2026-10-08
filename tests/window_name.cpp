@@ -195,6 +195,86 @@ TEST_CASE("Window_Name erases valid ExFont tokens as one icon") {
 	CHECK(name.Get().empty());
 }
 
+TEST_CASE("RTL ExFont caret stays immediately left of the final rendered icon") {
+	MockGame game(MockMap::eNone);
+	Window_Name name(0, 0, 192, 32, true);
+	const int contents_width = name.GetContents()->GetWidth();
+	const auto check_before_final_icon = [&name, contents_width](const std::string& value,
+			std::string_view prefix_before_icon) {
+		name.Set(value);
+		name.Update();
+
+		const int text_width = Text::GetSize(*Font::Default(), value).width;
+		const int prefix_width = Text::GetSize(*Font::Default(), prefix_before_icon).width;
+		const int text_left = contents_width - 2 - text_width;
+		const int icon_left = text_left + prefix_width;
+		const int logical_end_offset = Text::GetLogicalEndCaretOffset(*Font::Default(), value);
+		CHECK(logical_end_offset == prefix_width);
+		CHECK(name.GetCursorRect().x == icon_left - 16);
+		CHECK(name.GetCursorRect().x + name.GetCursorRect().width == icon_left);
+	};
+
+	check_before_final_icon("$A", "");
+	check_before_final_icon("محمد$A", "محمد");
+	check_before_final_icon("محمد$A$B", "محمد$A");
+
+	name.Set("محمد$A$B");
+	name.Erase();
+	CHECK(name.Get() == "محمد$A");
+	check_before_final_icon(name.Get(), "محمد");
+	name.Erase();
+	CHECK(name.Get() == "محمد");
+	name.Update();
+	CHECK(Text::GetLogicalEndCaretOffset(*Font::Default(), name.Get()) == 0);
+	CHECK(name.GetCursorRect().x == Window_Name::GetCaretX(true, contents_width,
+			Text::GetSize(*Font::Default(), name.Get()).width));
+
+	// ExFont tokens before Arabic remain measured as rendered icons followed by
+	// an Arabic run; the logical end stays at the Arabic run's visual left edge.
+	const std::string icon_then_arabic = "$Aمحمد";
+	name.Set(icon_then_arabic);
+	name.Update();
+	const int icon_width = Text::GetSize(*Font::Default(), "$A").width;
+	const int arabic_offset = Text::GetLogicalEndCaretOffset(*Font::Default(), "محمد");
+	const int full_width = Text::GetSize(*Font::Default(), icon_then_arabic).width;
+	CHECK(Text::GetLogicalEndCaretOffset(*Font::Default(), icon_then_arabic) == icon_width + arabic_offset);
+	CHECK(name.GetCursorRect().x == Window_Name::GetCaretX(true, contents_width, full_width,
+			icon_width + arabic_offset));
+
+	// Mixed Arabic/Latin/digit caret behavior remains driven by the BiDi helper.
+	name.Set("محمد123ABC");
+	name.Update();
+	const int mixed_width = Text::GetSize(*Font::Default(), name.Get()).width;
+	const int mixed_offset = Text::GetLogicalEndCaretOffset(*Font::Default(), name.Get());
+	CHECK(name.GetCursorRect().x == Window_Name::GetCaretX(true, contents_width,
+			mixed_width, mixed_offset));
+
+	Window_Name ltr_name(0, 0, 192, 32, false);
+	ltr_name.Set("محمد$A");
+	ltr_name.Update();
+	CHECK(ltr_name.GetCursorRect().x == Text::GetSize(*Font::Default(), ltr_name.Get()).width + 2);
+}
+
+TEST_CASE("RTL ExFont caret uses the active Maniacs extended token parser") {
+	MockGame game(MockMap::eNone);
+	const int previous_patch_setting = Player::game_config.patch_maniac.Get();
+	struct PatchManiacRestore {
+		int setting;
+		~PatchManiacRestore() { Player::game_config.patch_maniac.Set(setting); }
+	} restore{previous_patch_setting};
+	Player::game_config.patch_maniac.Set(true);
+
+	Window_Name name(0, 0, 192, 32, true);
+	name.Set("محمد$[43]");
+	name.Update();
+	const int prefix_width = Text::GetSize(*Font::Default(), "محمد").width;
+	const int total_width = Text::GetSize(*Font::Default(), name.Get()).width;
+	const int text_left = name.GetContents()->GetWidth() - 2 - total_width;
+	const int icon_left = text_left + prefix_width;
+	CHECK(Text::GetLogicalEndCaretOffset(*Font::Default(), name.Get()) == prefix_width);
+	CHECK(name.GetCursorRect().x + name.GetCursorRect().width == icon_left);
+}
+
 TEST_CASE("Name direction stays with the session across its keyboard pages") {
 	MockGame game(MockMap::eNone);
 	Window_Name name(0, 0, 192, 32, true);
