@@ -25,7 +25,17 @@ public sealed class InstallationCoordinator
 		string destinationDirectory,
 	SetupPlan plan,
 	bool replaceExisting,
-	CancellationToken cancellationToken = default)
+	CancellationToken cancellationToken = default) =>
+		await InstallAsync(sourceDirectory, destinationDirectory, plan, replaceExisting, null, false, cancellationToken).ConfigureAwait(false);
+
+	public async Task<SetupInstallResult> InstallAsync(
+		string sourceDirectory,
+		string destinationDirectory,
+		SetupPlan plan,
+		bool replaceExisting,
+		string? maniacsPackageDirectory,
+		bool maniacsLicenseAccepted,
+		CancellationToken cancellationToken = default)
 	{
 		var validation = RpgMaker2003InstallationValidator.Validate(sourceDirectory);
 		if (!validation.IsValid) { throw new InvalidOperationException(validation.Message); }
@@ -42,7 +52,7 @@ public sealed class InstallationCoordinator
 		}
 
 		await using var transaction = await InstallTransaction.CreateAsync(sourceDirectory, destinationDirectory, cancellationToken).ConfigureAwait(false);
-		var context = new SetupModuleContext(transaction.SourceDirectory, transaction.StagingDirectory, transaction.FinalDirectory);
+		var context = new SetupModuleContext(transaction.SourceDirectory, transaction.StagingDirectory, transaction.FinalDirectory, maniacsPackageDirectory, maniacsLicenseAccepted);
 		var applied = new List<(ISetupModule Module, ModuleApplyResult Result)>();
 		try
 		{
@@ -70,7 +80,7 @@ public sealed class InstallationCoordinator
 				InstallPath = Path.GetFullPath(destinationDirectory),
 				Modules = applied.Select(item => new InstalledModuleState(
 					item.Module.Descriptor.Id,
-					item.Module.Descriptor.Version,
+					item.Result.VersionOverride ?? item.Module.Descriptor.Version,
 					ComputeModuleFingerprint(item.Module.Descriptor, item.Result),
 					item.Result.OwnedFiles)).ToArray()
 			};
@@ -96,7 +106,7 @@ public sealed class InstallationCoordinator
 	{
 		var content = new StringBuilder()
 			.Append(descriptor.Id).Append('\n')
-			.Append(descriptor.Version).Append('\n')
+			.Append(result.VersionOverride ?? descriptor.Version).Append('\n')
 			.AppendJoin(',', descriptor.Dependencies.OrderBy(value => value, StringComparer.OrdinalIgnoreCase)).Append('\n');
 		foreach (var file in result.OwnedFiles.OrderBy(file => file.RelativePath, StringComparer.OrdinalIgnoreCase))
 		{

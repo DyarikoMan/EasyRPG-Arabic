@@ -6,17 +6,14 @@ shows the recommended components, and provides Browse and Advanced options.
 The vanilla Steam folder is treated as a read-only source; installations are
 staged in a separate managed folder.
 
-The current GUI is the first modular-bootstrapper version. The dependency
-planner, validation, transaction/state infrastructure, and Arabic Editor ZIP
-module are implemented. Advanced options can inspect an extracted Maniacs
-package using versioned layout, build, and Arabic Editor compatibility JSON
-data. The current validated data covers the 2024-10-29 package. Unknown builds,
-changed file fingerprints, and changed layouts are reported for validation.
-
-Package inspection does not apply Maniacs. Its official utility and English
-patch workflows remain gated until their safe invocation and verification are
-validated. EasyRPG-Arabic Player installation is also not implemented, so the
-default Install action reports blockers and makes no changes.
+The modular installer can install the validated 2024-10-29 Maniacs package and
+its English editor patch from a user-supplied extracted package, then install
+the existing Arabic Editor ZIP. It never launches `utility.exe` or
+`patch.exe`: it applies the recipe's verified Common payload and reads the
+English patch's WDiff delta directly. Before staging, the installer shows the
+package's `LICENSE.txt` and asks the user to accept it. Unknown builds, changed
+fingerprints, and changed layouts stop for validation. EasyRPG-Arabic Player
+installation is still not implemented and remains visibly unavailable.
 
 Build or republish the executable from a Windows machine with the .NET 8 SDK:
 

@@ -19,11 +19,13 @@ public sealed record SetupModuleDescriptor(
 public sealed record SetupModuleContext(
 	string VanillaDirectory,
 	string StagingDirectory,
-	string FinalDirectory);
+	string FinalDirectory,
+	string? ManiacsPackageDirectory = null,
+	bool ManiacsLicenseAccepted = false);
 
 public sealed record ModuleOwnedFile(string RelativePath, string Sha256);
 
-public sealed record ModuleApplyResult(IReadOnlyList<ModuleOwnedFile> OwnedFiles);
+public sealed record ModuleApplyResult(IReadOnlyList<ModuleOwnedFile> OwnedFiles, string? VersionOverride = null);
 
 public sealed record ModuleUninstallResult(IReadOnlyList<string> RemovedFiles, IReadOnlyList<string> PreservedFiles);
 

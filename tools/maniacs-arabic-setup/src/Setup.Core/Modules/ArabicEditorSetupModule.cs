@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Xml;
 
 namespace EasyRpgArabic.Setup.Core.Modules;
 
@@ -53,6 +54,7 @@ public sealed class ArabicEditorSetupModule : ISetupModule
 				}
 				owned.Add(new ModuleOwnedFile($"Plugin/{fileName}", Convert.ToHexString(SHA256.HashData(bytes))));
 			}
+			owned.AddRange(await ConfigureTextEncodingAsync(context, created, cancellationToken).ConfigureAwait(false));
 			return new ModuleApplyResult(owned);
 		}
 		catch
@@ -73,9 +75,11 @@ public sealed class ArabicEditorSetupModule : ISetupModule
 		{
 			ValidateHost(context.StagingDirectory);
 			var expected = ReadPayload();
-			if (result.OwnedFiles.Count != PayloadFiles.Length)
+			var hasConfigBackup = result.OwnedFiles.Any(file => string.Equals(file.RelativePath, ManiacsTextEncodingConfig.OriginalBackupPath, StringComparison.OrdinalIgnoreCase));
+			var expectedOwnedCount = PayloadFiles.Length + 1 + (hasConfigBackup ? 1 : 0);
+			if (result.OwnedFiles.Count != expectedOwnedCount)
 			{
-				return Task.FromResult(ModuleVerificationResult.Failure("The module did not report all three plugin files."));
+				return Task.FromResult(ModuleVerificationResult.Failure("The module ownership record does not match its plugin files and encoding configuration."));
 			}
 			foreach (var fileName in PayloadFiles)
 			{
@@ -89,9 +93,30 @@ public sealed class ArabicEditorSetupModule : ISetupModule
 					return Task.FromResult(ModuleVerificationResult.Failure($"Plugin/{fileName} failed its package hash check."));
 				}
 			}
-			return Task.FromResult(ModuleVerificationResult.Success("All Arabic Editor plugin files match the existing release package."));
+			var configPath = ResolveOwnedPath(context.StagingDirectory, ManiacsTextEncodingConfig.RelativePath);
+			if (!File.Exists(configPath)) { return Task.FromResult(ModuleVerificationResult.Failure("Plugin/cmdcs.xml is missing.")); }
+			var configBytes = File.ReadAllBytes(configPath);
+			if (!string.Equals(ManiacsTextEncodingConfig.ReadCodePage(configBytes), ManiacsTextEncodingConfig.ArabicWindowsCodePage, StringComparison.Ordinal))
+			{
+				return Task.FromResult(ModuleVerificationResult.Failure("Maniacs Text Encoding is not Arabic (Windows) / CP1256."));
+			}
+			var configOwned = result.OwnedFiles.SingleOrDefault(file => string.Equals(file.RelativePath, ManiacsTextEncodingConfig.RelativePath, StringComparison.OrdinalIgnoreCase));
+			if (configOwned is null || !string.Equals(configOwned.Sha256, Convert.ToHexString(SHA256.HashData(configBytes)), StringComparison.OrdinalIgnoreCase))
+			{
+				return Task.FromResult(ModuleVerificationResult.Failure("Plugin/cmdcs.xml does not match the module's recorded configuration."));
+			}
+			var backupOwned = result.OwnedFiles.SingleOrDefault(file => string.Equals(file.RelativePath, ManiacsTextEncodingConfig.OriginalBackupPath, StringComparison.OrdinalIgnoreCase));
+			if (backupOwned is not null)
+			{
+				var backupPath = ResolveOwnedPath(context.StagingDirectory, backupOwned.RelativePath);
+				if (!File.Exists(backupPath) || !string.Equals(ComputeFileHash(backupPath), backupOwned.Sha256, StringComparison.OrdinalIgnoreCase))
+				{
+					return Task.FromResult(ModuleVerificationResult.Failure("The preserved pre-install cmdcs.xml backup is missing or changed."));
+				}
+			}
+			return Task.FromResult(ModuleVerificationResult.Success("Arabic Editor files match the package and Maniacs Text Encoding is Arabic (Windows) / CP1256."));
 		}
-		catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+		catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or XmlException)
 		{
 			return Task.FromResult(ModuleVerificationResult.Failure(exception.Message));
 		}
@@ -115,9 +140,58 @@ public sealed class ArabicEditorSetupModule : ISetupModule
 
 	public Task<ModuleUninstallResult> UninstallAsync(SetupModuleContext context, IReadOnlyList<ModuleOwnedFile> ownedFiles, CancellationToken cancellationToken = default)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
 		var removed = new List<string>();
 		var preserved = new List<string>();
-		foreach (var owned in ownedFiles)
+		var config = ownedFiles.SingleOrDefault(file => string.Equals(file.RelativePath, ManiacsTextEncodingConfig.RelativePath, StringComparison.OrdinalIgnoreCase));
+		var backup = ownedFiles.SingleOrDefault(file => string.Equals(file.RelativePath, ManiacsTextEncodingConfig.OriginalBackupPath, StringComparison.OrdinalIgnoreCase));
+		if (backup is not null)
+		{
+			var backupPath = ResolveOwnedPath(context.StagingDirectory, backup.RelativePath);
+			var configPath = ResolveOwnedPath(context.StagingDirectory, ManiacsTextEncodingConfig.RelativePath);
+			if (File.Exists(backupPath) && string.Equals(ComputeFileHash(backupPath), backup.Sha256, StringComparison.OrdinalIgnoreCase))
+			{
+				if (Directory.Exists(configPath)) { throw new IOException("The Plugin/cmdcs.xml path became a directory; refusing to replace it during uninstall."); }
+				var configStillOwned = config is not null && File.Exists(configPath) &&
+					string.Equals(ComputeFileHash(configPath), config.Sha256, StringComparison.OrdinalIgnoreCase);
+				if (!File.Exists(configPath) || configStillOwned)
+				{
+					Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
+					EnsureNoReparsePoint(Path.GetDirectoryName(configPath)!);
+					EnsureNoReparsePoint(configPath);
+					EnsureNoReparsePoint(backupPath);
+					cancellationToken.ThrowIfCancellationRequested();
+					File.Copy(backupPath, configPath, overwrite: true);
+					File.SetLastWriteTimeUtc(configPath, File.GetLastWriteTimeUtc(backupPath));
+				}
+				else
+				{
+					preserved.Add(ManiacsTextEncodingConfig.RelativePath);
+				}
+				File.Delete(backupPath);
+				removed.Add(backup.RelativePath);
+			}
+			else
+			{
+				preserved.Add(backup.RelativePath);
+			}
+		}
+		else if (config is not null)
+		{
+			var configPath = ResolveOwnedPath(context.StagingDirectory, config.RelativePath);
+			if (File.Exists(configPath) && string.Equals(ComputeFileHash(configPath), config.Sha256, StringComparison.OrdinalIgnoreCase))
+			{
+				File.Delete(configPath);
+				removed.Add(config.RelativePath);
+			}
+			else if (File.Exists(configPath))
+			{
+				preserved.Add(config.RelativePath);
+			}
+		}
+		foreach (var owned in ownedFiles.Where(file =>
+			!string.Equals(file.RelativePath, ManiacsTextEncodingConfig.RelativePath, StringComparison.OrdinalIgnoreCase) &&
+			!string.Equals(file.RelativePath, ManiacsTextEncodingConfig.OriginalBackupPath, StringComparison.OrdinalIgnoreCase)))
 		{
 			cancellationToken.ThrowIfCancellationRequested();
 			var path = ResolveOwnedPath(context.StagingDirectory, owned.RelativePath);
@@ -131,6 +205,60 @@ public sealed class ArabicEditorSetupModule : ISetupModule
 			removed.Add(owned.RelativePath);
 		}
 		return Task.FromResult(new ModuleUninstallResult(removed, preserved));
+	}
+
+	private static async Task<IReadOnlyList<ModuleOwnedFile>> ConfigureTextEncodingAsync(
+		SetupModuleContext context,
+		ICollection<string> created,
+		CancellationToken cancellationToken)
+	{
+		var stagedConfig = ResolveOwnedPath(context.StagingDirectory, ManiacsTextEncodingConfig.RelativePath);
+		if (File.Exists(stagedConfig) || Directory.Exists(stagedConfig))
+		{
+			throw new IOException("Refusing to overwrite an existing staged Plugin/cmdcs.xml.");
+		}
+
+		var previousConfig = ResolveOwnedPath(context.FinalDirectory, ManiacsTextEncodingConfig.RelativePath);
+		var hasPreviousConfig = File.Exists(previousConfig);
+		if (Directory.Exists(previousConfig)) { throw new IOException("The existing Plugin/cmdcs.xml path is a directory."); }
+		EnsureNoReparsePoint(context.FinalDirectory);
+		EnsureNoReparsePoint(Path.Combine(context.FinalDirectory, "Plugin"));
+		EnsureNoReparsePoint(previousConfig);
+
+		var owned = new List<ModuleOwnedFile>();
+		byte[] configBytes;
+		DateTime? previousTimestamp = null;
+		if (hasPreviousConfig)
+		{
+			var original = await File.ReadAllBytesAsync(previousConfig, cancellationToken).ConfigureAwait(false);
+			configBytes = ManiacsTextEncodingConfig.SetArabicWindowsCodePage(original);
+			previousTimestamp = File.GetLastWriteTimeUtc(previousConfig);
+
+			var backupPath = ResolveOwnedPath(context.StagingDirectory, ManiacsTextEncodingConfig.OriginalBackupPath);
+			if (File.Exists(backupPath) || Directory.Exists(backupPath)) { throw new IOException("Refusing to overwrite the cmdcs.xml rollback backup."); }
+			await WriteNewFileAsync(backupPath, original, created, cancellationToken).ConfigureAwait(false);
+			File.SetLastWriteTimeUtc(backupPath, previousTimestamp.Value);
+			owned.Add(new ModuleOwnedFile(ManiacsTextEncodingConfig.OriginalBackupPath, Convert.ToHexString(SHA256.HashData(original))));
+		}
+		else
+		{
+			configBytes = ManiacsTextEncodingConfig.CreateArabicDefault();
+		}
+
+		await WriteNewFileAsync(stagedConfig, configBytes, created, cancellationToken).ConfigureAwait(false);
+		if (previousTimestamp is { } timestamp) { File.SetLastWriteTimeUtc(stagedConfig, timestamp); }
+		owned.Add(new ModuleOwnedFile(ManiacsTextEncodingConfig.RelativePath, Convert.ToHexString(SHA256.HashData(configBytes))));
+		return owned;
+	}
+
+	private static async Task WriteNewFileAsync(string path, byte[] bytes, ICollection<string> created, CancellationToken cancellationToken)
+	{
+		var parent = Path.GetDirectoryName(path)!;
+		Directory.CreateDirectory(parent);
+		created.Add(path);
+		await using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024, useAsync: true);
+		await output.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
+		await output.FlushAsync(cancellationToken).ConfigureAwait(false);
 	}
 
 	private Dictionary<string, byte[]> ReadPayload()
@@ -176,7 +304,22 @@ public sealed class ArabicEditorSetupModule : ISetupModule
 		{
 			throw new InvalidDataException($"Module-owned path escapes the managed directory: {relativePath}");
 		}
+		EnsureNoReparsePoint(fullRoot.TrimEnd(Path.DirectorySeparatorChar));
+		var current = fullRoot.TrimEnd(Path.DirectorySeparatorChar);
+		foreach (var part in Path.GetRelativePath(current, fullPath).Split(Path.DirectorySeparatorChar))
+		{
+			current = Path.Combine(current, part);
+			EnsureNoReparsePoint(current);
+		}
 		return fullPath;
+	}
+
+	private static void EnsureNoReparsePoint(string path)
+	{
+		if ((File.Exists(path) || Directory.Exists(path)) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+		{
+			throw new IOException($"Refusing linked/reparse configuration path: {path}");
+		}
 	}
 
 	private static string ComputeFileHash(string path)
@@ -188,16 +331,18 @@ public sealed class ArabicEditorSetupModule : ISetupModule
 
 public static class RecommendedSetupModules
 {
-	public static IReadOnlyList<ISetupModule> Create(Func<Stream> openArabicEditorPackage) =>
+	public static IReadOnlyList<ISetupModule> Create(Func<Stream> openArabicEditorPackage)
+	{
+		var catalog = EasyRpgArabic.Setup.Core.Maniacs.ManiacsRecipeCatalog.LoadEmbedded();
+		var inspector = new EasyRpgArabic.Setup.Core.Maniacs.ManiacsPackageInspector(catalog);
+		return
 	[
-		new ManiacsSetupModule(new EasyRpgArabic.Setup.Core.Maniacs.ManiacsPackageInspector(
-			EasyRpgArabic.Setup.Core.Maniacs.ManiacsRecipeCatalog.LoadEmbedded())),
-		new UnavailableSetupModule(new SetupModuleDescriptor(
-			"maniacs-english", "Maniacs English", "unavailable", ["maniacs"], ["Official Maniacs installation"], ModuleReadiness.NotImplemented,
-			"Official English patch application is not automated in this version.")),
+		new ManiacsSetupModule(inspector, catalog),
+		new ManiacsEnglishSetupModule(inspector, catalog),
 		new ArabicEditorSetupModule(openArabicEditorPackage),
 		new UnavailableSetupModule(new SetupModuleDescriptor(
 			"easyrpg-arabic", "EasyRPG-Arabic", "unavailable", [], ["EasyRPG-Arabic Player release payload"], ModuleReadiness.NotImplemented,
 			"Runtime installation is not implemented in this version."))
 	];
+	}
 }

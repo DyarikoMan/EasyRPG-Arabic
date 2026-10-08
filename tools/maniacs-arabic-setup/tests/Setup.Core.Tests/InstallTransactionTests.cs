@@ -6,7 +6,7 @@ namespace EasyRpgArabic.Setup.Core.Tests;
 public sealed class InstallTransactionTests
 {
 	[Fact]
-	public async Task CreatesSiblingStageAsCopyAndLeavesSourceUntouched()
+	public async Task CreatesEmptySiblingStageAndLeavesSourceUntouched()
 	{
 		using var fixture = new SteamDetectionTests.TempDirectory();
 		var source = Path.Combine(fixture.Path, "vanilla");
@@ -18,7 +18,7 @@ public sealed class InstallTransactionTests
 
 		Assert.True(Directory.Exists(transaction.StagingDirectory));
 		Assert.Equal(Path.GetDirectoryName(destination), Path.GetDirectoryName(transaction.StagingDirectory));
-		Assert.Equal("source-data", await File.ReadAllTextAsync(Path.Combine(transaction.StagingDirectory, "project.dat")));
+		Assert.Empty(Directory.EnumerateFileSystemEntries(transaction.StagingDirectory));
 		Assert.Equal("source-data", await File.ReadAllTextAsync(Path.Combine(source, "project.dat")));
 		Assert.False(Directory.Exists(destination));
 	}
@@ -55,6 +55,7 @@ public sealed class InstallTransactionTests
 		File.WriteAllText(Path.Combine(destination, "version.txt"), "old");
 		await using var transaction = await InstallTransaction.CreateAsync(source, destination);
 		await Assert.ThrowsAsync<IOException>(() => transaction.CommitAsync(replaceExisting: false));
+		File.WriteAllText(Path.Combine(transaction.StagingDirectory, "version.txt"), "new");
 
 		await transaction.CommitAsync(replaceExisting: true);
 

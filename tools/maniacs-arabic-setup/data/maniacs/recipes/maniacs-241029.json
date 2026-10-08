@@ -31,8 +31,48 @@
   },
   "officialInstallProcess": {
     "utilityPath": "utility.exe",
-    "utilityAutomation": "interactive-user-required",
+    "utilityAutomation": "reproduced-by-validated-recipe",
     "englishPatchPath": "English/patch.exe",
-    "englishPatchAutomation": "not-verified"
+    "englishPatchAutomation": "reproduced-from-validated-wdiff"
+  },
+  "vanillaSourceSha256": {
+    "rpg2003.exe": "29D5B064E8D7453A092CBA7C724348BC5A3E3F1B4218F3C53E9A32B3246E8D5C",
+    "ultimate_eb.dll": "0B55D6371EB5B4EC793C999BDFE569E8FD1E423397EE2F6E9974B16CD8C25284",
+    "rpg_rt.ldb.dat": "764D04D7F6FF16B2D9DB8473CDD667271B5EF12160C464206D75E371493288FA",
+    "ultimate_rt_eb.dll.dat": "78FFF09FAAFD8E19F914881AC963FDC5B46B3502BBD3EAB5CDE825BBB63A4CCD",
+    "UNLHA32.DLL": "1FDA9015ACBF708A170F3F0C6B5C5888832C5B9125DA0803E598B237B5CBE424"
+  },
+  "vanillaSourceArchitectures": {
+    "rpg2003.exe": "x86",
+    "ultimate_eb.dll": "x86",
+    "UNLHA32.DLL": "x86"
+  },
+  "basePayloadFiles": [
+    { "packagePath": "LICENSE.txt", "installPath": "LICENSE.txt" },
+    { "packagePath": "Common/accord.dll", "installPath": "accord.dll" },
+    { "packagePath": "Common/backupper.exe", "installPath": "backupper.exe" },
+    { "packagePath": "Common/battle_command_list.txt", "installPath": "battle_command_list.txt" },
+    { "packagePath": "Common/cmdcs.dll", "installPath": "cmdcs.dll" },
+    { "packagePath": "Common/cmdl_editor.exe", "installPath": "cmdl_editor.exe" },
+    { "packagePath": "Common/command_list.txt", "installPath": "command_list.txt" },
+    { "packagePath": "Common/Footy2.dll", "installPath": "Footy2.dll" }
+  ],
+  "englishPatch": {
+    "targetFileName": "rpg2003.exe",
+    "backupFileName": "rpg2003.OLD",
+    "wDiffVersion": 104,
+    "inputSize": 4387328,
+    "inputSha256": "29D5B064E8D7453A092CBA7C724348BC5A3E3F1B4218F3C53E9A32B3246E8D5C",
+    "outputSize": 4673536,
+    "outputSha256": "02AB04E571797A69181F3E9BEDEF1BED27F9DD5AB7135EBD2D50FF09FFFA162E",
+    "inputCrc32": "96CC36BE",
+    "outputCrc32": "8C15AB52",
+    "outputLastWriteTimeUtc": "2024-08-22T00:00:00Z",
+    "payloadFiles": {
+      "English/cmdTos.dll": "cmdTos.dll",
+      "English/patch.exe": "patch.exe",
+      "English/RPG_RT.exe": "RPG_RT.exe"
+    },
+    "expectedPluginFiles": []
   }
 }

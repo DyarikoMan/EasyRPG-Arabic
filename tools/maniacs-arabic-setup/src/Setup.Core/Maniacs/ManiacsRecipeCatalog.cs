@@ -27,7 +27,27 @@ public sealed record ManiacsVersionRecipe(
 	string LayoutId,
 	IReadOnlyList<ManiacsBuildMarker> BuildMarkers,
 	IReadOnlyDictionary<string, string> IdentityFileSha256,
-	ManiacsOfficialInstallProcess OfficialInstallProcess);
+	ManiacsOfficialInstallProcess OfficialInstallProcess,
+	IReadOnlyDictionary<string, string>? VanillaSourceSha256 = null,
+	IReadOnlyDictionary<string, string>? VanillaSourceArchitectures = null,
+	IReadOnlyList<ManiacsPackageFile>? BasePayloadFiles = null,
+	ManiacsEnglishPatchRecipe? EnglishPatch = null);
+
+public sealed record ManiacsPackageFile(string PackagePath, string InstallPath);
+
+public sealed record ManiacsEnglishPatchRecipe(
+	string TargetFileName,
+	string BackupFileName,
+	int WDiffVersion,
+	long InputSize,
+	string InputSha256,
+	long OutputSize,
+	string OutputSha256,
+	string InputCrc32,
+	string OutputCrc32,
+	DateTime? OutputLastWriteTimeUtc,
+	IReadOnlyDictionary<string, string> PayloadFiles,
+	IReadOnlyList<string> ExpectedPluginFiles);
 
 public sealed record ManiacsBuildMarker(string Path, string ContainsAscii);
 
@@ -166,6 +186,71 @@ public sealed class ManiacsRecipeCatalog
 				ValidateRelativePath(path);
 				if (!requiredPaths.Contains(path)) { throw new InvalidDataException($"Recipe '{recipe.Id}' fingerprints a file that is not required by layout '{layout.Id}': {path}"); }
 				if (hash.Length != 64 || !hash.All(Uri.IsHexDigit)) { throw new InvalidDataException($"Recipe '{recipe.Id}' has an invalid SHA-256 for '{path}'."); }
+			}
+			foreach (var (path, hash) in recipe.VanillaSourceSha256 ?? new Dictionary<string, string>())
+			{
+				ValidateRelativePath(path);
+				if (hash.Length != 64 || !hash.All(Uri.IsHexDigit)) { throw new InvalidDataException($"Recipe '{recipe.Id}' has an invalid vanilla source SHA-256 for '{path}'."); }
+			}
+			foreach (var (path, architecture) in recipe.VanillaSourceArchitectures ?? new Dictionary<string, string>())
+			{
+				ValidateRelativePath(path);
+				if (!IsKnownArchitecture(architecture)) { throw new InvalidDataException($"Recipe '{recipe.Id}' has an invalid source architecture for '{path}'."); }
+				if (!(recipe.VanillaSourceSha256?.ContainsKey(path) ?? false)) { throw new InvalidDataException($"Recipe '{recipe.Id}' architecture has no matching source fingerprint: {path}"); }
+			}
+			foreach (var payloadFile in recipe.BasePayloadFiles ?? [])
+			{
+				ValidateRelativePath(payloadFile.PackagePath);
+				ValidateRelativePath(payloadFile.InstallPath);
+				if (!recipe.IdentityFileSha256.ContainsKey(payloadFile.PackagePath))
+				{
+					throw new InvalidDataException($"Recipe '{recipe.Id}' base payload is not fingerprinted: {payloadFile.PackagePath}");
+				}
+			}
+			EnsureUnique((recipe.BasePayloadFiles ?? []).Select(file => file.InstallPath), $"base payload path in recipe '{recipe.Id}'");
+			if (recipe.EnglishPatch is { } patch)
+			{
+				ValidateRelativePath(patch.TargetFileName);
+				ValidateRelativePath(patch.BackupFileName);
+				if (patch.TargetFileName.Contains('/') || patch.TargetFileName.Contains('\\') || patch.BackupFileName.Contains('/') || patch.BackupFileName.Contains('\\'))
+				{
+					throw new InvalidDataException($"Recipe '{recipe.Id}' WDiff target and backup must be filenames in the install root.");
+				}
+				if (patch.WDiffVersion is < 100 or > 104 || patch.InputSize <= 0 || patch.OutputSize <= 0 || patch.OutputSize > 512L * 1024 * 1024 ||
+					patch.InputSha256.Length != 64 || !patch.InputSha256.All(Uri.IsHexDigit) ||
+					patch.OutputSha256.Length != 64 || !patch.OutputSha256.All(Uri.IsHexDigit) ||
+					!Regex.IsMatch(patch.InputCrc32, "^[0-9A-Fa-f]{8}$", RegexOptions.CultureInvariant) ||
+					!Regex.IsMatch(patch.OutputCrc32, "^[0-9A-Fa-f]{8}$", RegexOptions.CultureInvariant))
+				{
+					throw new InvalidDataException($"Recipe '{recipe.Id}' has invalid English patch metadata.");
+				}
+				if (!string.Equals(patch.TargetFileName, Path.GetFileName(patch.TargetFileName), StringComparison.Ordinal) ||
+					!string.Equals(patch.BackupFileName, Path.GetFileName(patch.BackupFileName), StringComparison.Ordinal) ||
+					string.Equals(patch.TargetFileName, patch.BackupFileName, StringComparison.OrdinalIgnoreCase) ||
+					!(recipe.VanillaSourceSha256?.TryGetValue(patch.TargetFileName, out var sourceHash) ?? false) ||
+					!string.Equals(sourceHash, patch.InputSha256, StringComparison.OrdinalIgnoreCase))
+				{
+					throw new InvalidDataException($"Recipe '{recipe.Id}' WDiff input does not match its vanilla source fingerprint.");
+				}
+				foreach (var (packagePath, installPath) in patch.PayloadFiles)
+				{
+					ValidateRelativePath(packagePath);
+					ValidateRelativePath(installPath);
+					if (!recipe.IdentityFileSha256.ContainsKey(packagePath))
+					{
+						throw new InvalidDataException($"Recipe '{recipe.Id}' English payload is not fingerprinted: {packagePath}");
+					}
+				}
+				EnsureUnique(patch.PayloadFiles.Values, $"English payload install path in recipe '{recipe.Id}'");
+				var pluginNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+				foreach (var path in patch.ExpectedPluginFiles)
+				{
+					ValidateRelativePath(path);
+					if (!pluginNames.Add(path) || !recipe.IdentityFileSha256.ContainsKey("English/Plugin/" + path))
+					{
+						throw new InvalidDataException($"Recipe '{recipe.Id}' has an un-fingerprinted or duplicate English plugin file: {path}");
+					}
+				}
 			}
 			ValidateRelativePath(recipe.OfficialInstallProcess.UtilityPath);
 			ValidateRelativePath(recipe.OfficialInstallProcess.EnglishPatchPath);

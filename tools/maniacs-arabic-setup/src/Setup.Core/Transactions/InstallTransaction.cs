@@ -17,35 +17,26 @@ public sealed class InstallTransaction : IAsyncDisposable
 		StagingDirectory = stagingDirectory;
 	}
 
-	public static async Task<InstallTransaction> CreateAsync(
+	public static Task<InstallTransaction> CreateAsync(
 		string sourceDirectory,
 		string finalDirectory,
 		CancellationToken cancellationToken = default)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
 		var source = Path.GetFullPath(sourceDirectory);
 		var destination = Path.GetFullPath(finalDirectory);
 		if (!Directory.Exists(source)) { throw new DirectoryNotFoundException($"Source directory does not exist: {source}"); }
+		if ((File.GetAttributes(source) & FileAttributes.ReparsePoint) != 0)
+		{
+			throw new IOException("The vanilla source folder is a link/reparse point and cannot be safely staged.");
+		}
 		EnsureDirectoriesAreSeparate(source, destination);
 		var parent = Path.GetDirectoryName(destination);
 		if (string.IsNullOrWhiteSpace(parent)) { throw new InvalidOperationException("The destination must have a parent folder."); }
 		Directory.CreateDirectory(parent);
 		var stage = Path.Combine(parent, ".EasyRPG-Arabic.staging-" + Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(stage);
-		var transaction = new InstallTransaction(source, destination, stage);
-		try
-		{
-			if ((File.GetAttributes(source) & FileAttributes.ReparsePoint) != 0)
-			{
-				throw new IOException("The vanilla source folder is a link/reparse point and cannot be safely staged.");
-			}
-			await CopyDirectoryAsync(source, stage, cancellationToken).ConfigureAwait(false);
-			return transaction;
-		}
-		catch
-		{
-			await transaction.RollbackAsync().ConfigureAwait(false);
-			throw;
-		}
+		return Task.FromResult(new InstallTransaction(source, destination, stage));
 	}
 
 	public Task CommitAsync(bool replaceExisting, CancellationToken cancellationToken = default)
@@ -112,34 +103,6 @@ public sealed class InstallTransaction : IAsyncDisposable
 			throw new InvalidOperationException("Refusing to remove an unexpected staging directory.");
 		}
 		EnsureDirectoriesAreSeparate(SourceDirectory, StagingDirectory);
-	}
-
-	private static async Task CopyDirectoryAsync(string source, string destination, CancellationToken cancellationToken)
-	{
-		foreach (var sourcePath in Directory.EnumerateFileSystemEntries(source))
-		{
-			cancellationToken.ThrowIfCancellationRequested();
-			var attributes = File.GetAttributes(sourcePath);
-			if ((attributes & FileAttributes.ReparsePoint) != 0)
-			{
-				throw new IOException($"The source contains a link/reparse point that cannot be safely staged: {sourcePath}");
-			}
-
-			var destinationPath = Path.Combine(destination, Path.GetFileName(sourcePath));
-			if ((attributes & FileAttributes.Directory) != 0)
-			{
-				Directory.CreateDirectory(destinationPath);
-				await CopyDirectoryAsync(sourcePath, destinationPath, cancellationToken).ConfigureAwait(false);
-			}
-			else
-			{
-				await using var input = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, 128 * 1024, useAsync: true);
-				await using var output = new FileStream(destinationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, useAsync: true);
-				await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
-				await output.FlushAsync(cancellationToken).ConfigureAwait(false);
-				File.SetLastWriteTimeUtc(destinationPath, File.GetLastWriteTimeUtc(sourcePath));
-			}
-		}
 	}
 
 	private static void EnsureDirectoriesAreSeparate(string source, string destination)

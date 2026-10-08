@@ -91,17 +91,17 @@ internal sealed class MainForm : Form
 		{
 			var descriptor = _modules[index].Descriptor;
 			modulePanel.RowStyles.Add(new RowStyle(SizeType.Percent, 25));
-			var check = new CheckBox { Checked = true, AutoSize = false, Size = new Size(20, 22), Anchor = AnchorStyles.None };
+			var check = new CheckBox { Checked = descriptor.Readiness == ModuleReadiness.Available, AutoSize = false, Size = new Size(20, 22), Anchor = AnchorStyles.None };
 			check.Enabled = descriptor.Readiness == ModuleReadiness.Available;
 			_moduleChecks.Add(descriptor.Id, check);
 			modulePanel.Controls.Add(check, 0, index);
 			modulePanel.Controls.Add(new Label { Text = descriptor.Name, TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill }, 1, index);
 			var statusText = descriptor.Readiness switch
 			{
-				_ when descriptor.Id == "maniacs" => "Versioned package inspection · install gated",
 				ModuleReadiness.NotImplemented => "Not implemented",
 				ModuleReadiness.Unavailable => "Unavailable",
-				_ when descriptor.Id == "arabic-editor" => "Package ready · requires Maniacs English",
+				_ when descriptor.Id is "maniacs" or "maniacs-english" => "Ready · exact supported package required",
+				_ when descriptor.Id == "arabic-editor" => "Ready · requires Maniacs English",
 				_ => descriptor.StatusMessage
 			};
 			var status = new Label { Text = statusText, TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill, ForeColor = descriptor.Readiness == ModuleReadiness.Available ? Color.DarkGreen : Color.DarkOrange };
@@ -130,7 +130,7 @@ internal sealed class MainForm : Form
 		_advancedPanel.Controls.Add(browseDestination);
 		_advancedPanel.Controls.Add(new Label
 		{
-			Text = "Extracted official Maniacs package (used for build/layout inspection)",
+			Text = "Extracted official Maniacs package (required for installation)",
 			Location = new Point(0, 61),
 			Size = new Size(500, 22)
 		});
@@ -263,7 +263,9 @@ internal sealed class MainForm : Form
 			if (inspection.Issues.Count != 0) { lines.Add(string.Join(" · ", inspection.Issues.Take(2))); }
 			if (inspection.Status == ManiacsPackageStatus.KnownSupportedBuild)
 			{
-				lines.Add("Inspection only; official utility and English patch application is not verified.");
+				lines.Add(inspection.ArabicEditorValidated
+					? "Maniacs and English patch stages are ready; license acceptance is requested when installing."
+					: "This build is not validated with Arabic Editor support.");
 			}
 			_maniacsPackageStatus.Text = string.Join(Environment.NewLine, lines);
 			_maniacsPackageStatus.ForeColor = inspection.Status switch
@@ -311,6 +313,38 @@ internal sealed class MainForm : Form
 			return;
 		}
 
+		var usesManiacs = plan.OrderedModules.Any(module => module.Descriptor.Id is "maniacs" or "maniacs-english");
+		string? maniacsPackageDirectory = null;
+		var maniacsLicenseAccepted = false;
+		if (usesManiacs)
+		{
+			if (_maniacsModule is null || string.IsNullOrWhiteSpace(_maniacsPackagePath.Text))
+			{
+				MessageBox.Show(this, "Select the extracted official Maniacs package in Advanced options before installing.", "Select Maniacs package", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+			var inspection = _maniacsModule.InspectPackage(_maniacsPackagePath.Text.Trim());
+			var requiresArabicCompatibility = plan.OrderedModules.Any(module => module.Descriptor.Id == "arabic-editor");
+			if (!inspection.IsKnownSupportedBuild || (requiresArabicCompatibility && !inspection.ArabicEditorValidated) || inspection.PackageRoot is null)
+			{
+				MessageBox.Show(this, inspection.Summary + (inspection.Issues.Count == 0 ? string.Empty : Environment.NewLine + string.Join(Environment.NewLine, inspection.Issues)),
+					"Maniacs package needs validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+			var licensePath = Path.Combine(inspection.PackageRoot, "LICENSE.txt");
+			string licenseText;
+			try { licenseText = File.ReadAllText(licensePath); }
+			catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+			{
+				MessageBox.Show(this, "Could not read the license included with the Maniacs package: " + exception.Message, "Maniacs license", MessageBoxButtons.OK, MessageBoxIcon.Error);
+				return;
+			}
+			using var licenseDialog = new ManiacsLicenseDialog(licenseText);
+			if (licenseDialog.ShowDialog(this) != DialogResult.OK) { return; }
+			maniacsPackageDirectory = inspection.PackageRoot;
+			maniacsLicenseAccepted = true;
+		}
+
 		var destination = _destinationPath.Text.Trim();
 		if (string.IsNullOrWhiteSpace(destination))
 		{
@@ -332,7 +366,8 @@ internal sealed class MainForm : Form
 		_operationStatus.Text = "Preparing the separate installation...";
 		try
 		{
-			var result = await new InstallationCoordinator().InstallAsync(source, destination, plan, replaceExisting);
+			var result = await new InstallationCoordinator().InstallAsync(source, destination, plan, replaceExisting,
+				maniacsPackageDirectory, maniacsLicenseAccepted);
 			_operationStatus.Text = $"Done. Installed at {result.InstallationDirectory}";
 			MessageBox.Show(this, $"Setup completed.\n\n{result.InstallationDirectory}", "EasyRPG-Arabic Setup", MessageBoxButtons.OK, MessageBoxIcon.Information);
 		}

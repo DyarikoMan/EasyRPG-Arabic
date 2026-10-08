@@ -7,13 +7,10 @@ recommends the supported components, and lets the user install them with one
 click. The result lives in a separate managed folder such as
 `RPG Maker 2003 - Arabic`; the vanilla Steam folder is only a read-only source.
 
-The archived PowerShell wizard is a prototype, not this final flow. It still
-requires an extracted Maniacs package and user interaction with the official
-utility. Do not replace or automate `utility.exe` until its supported
-automation interface is verified. If the official package cannot be
-redistributed, the product must obtain it through an authorized source or ask
-the user to provide it. The bootstrapper must not silently bypass its license
-or EULA.
+The setup requires an extracted official Maniacs package supplied by the user;
+it does not bundle or redistribute Maniacs files. The installer displays that
+package's `LICENSE.txt` and requires explicit acceptance before applying its
+modules. It does not launch `utility.exe` or `patch.exe`.
 
 ## Repository layout
 
@@ -74,9 +71,9 @@ an explicit predecessor/backup relationship.
 
 | Module | Input and responsibility | Status |
 | --- | --- | --- |
-| `maniacs` | Inspect a supplied package against registered layout/build recipes. Future apply adapters must run the official process against staging and verify its complete output. | Package inspection is implemented. Applying the utility remains gated until its safe invocation and output verification are validated. |
-| `maniacs-english` | Apply the package's official English process after `maniacs`; verify the patched editor and required outputs. | Not implemented. The patch operation still needs validation. |
-| `arabic-editor` | Install and verify `EasyCmdTos.dll`, `EasyRpgCommands.dll`, and `0Harmony.dll` from the existing release ZIP. | Module apply/verify/rollback is implemented. Planner blocks it until `maniacs-english` is available. |
+| `maniacs` | Validate the exact user-supplied package and vanilla source, copy only recipe-listed vanilla editor files (and observed optional helpers), then apply the Common files and license to staging. | Functional for exact recipe `maniacs-241029`; verifies source/package hashes and editor architectures. |
+| `maniacs-english` | Copy the recipe-mapped English payload, preserve `rpg2003.OLD`, apply the embedded WDiff delta to staged `rpg2003.exe`, and verify the output. | Functional for exact recipe `maniacs-241029`; it does not launch `patch.exe`. |
+| `arabic-editor` | Install the three existing editor DLLs and set the managed install's `Plugin/cmdcs.xml` Text Encoding to Arabic (Windows) / CP1256. Preserve previous plugin settings and restore them on uninstall when unchanged. | Module apply/verify/rollback is implemented. Planner blocks it until `maniacs-english` is available. |
 | `easyrpg-arabic` | Add the EasyRPG-Arabic Player runtime as a separately managed component; verify its executable and version. | Not implemented in this setup. |
 
 The existing Arabic Editor ZIP stays at
@@ -99,13 +96,17 @@ Editor validation is separately recorded in
 `data/maniacs/compatibility/arabic-editor.json`.
 
 For the inspected package, utility/editor/plugin binaries are x86 and the
-included `RPG_RT.exe` runtime is x64. A matching layout with an unknown build,
+included `RPG_RT.exe` runtime is x64. The 241029 recipe also records the
+required vanilla source hashes, staged payload mappings, WDiff version, target,
+input/output sizes and hashes, CRCs, output timestamp, and expected Plugin
+contents. Its WDiff reader validates the complete stream and applies copy-from-
+input and literal-data operations in memory; only the staged editor target is
+replaced. A matching layout with an unknown build,
 a known build with changed fingerprints, an architecture mismatch, or a changed
 layout stops for validation. Only an exact recipe match can report the Arabic
-patch as validated, and this report does not imply that the Maniacs utility has
-been applied. The current recipe records utility use as interactive and English
-patch automation as unverified. The planner therefore continues to block
-installation until a safe apply adapter exists.
+patch as validated. The recipe and compatibility data remain separate from the
+generic parser and module code; a future release using the same WDiff format can
+normally be added with new fingerprints and recipe values.
 
 Adding a release should normally require a layout update only if its structure
 changed, a new recipe with build markers and package fingerprints, and a
@@ -121,8 +122,8 @@ and UI code should not gain release-specific version branches.
    editor executable. Capture source fingerprints for audit; never write to the
    source.
 3. Resolve selected modules and prerequisites in topological dependency order.
-   The planner and not-ready-module rejection are implemented; network payload
-   acquisition is not.
+   The planner blocks unavailable modules, including the not-yet-implemented
+   EasyRPG-Arabic Player runtime.
 4. Build into a unique sibling staging folder. Apply modules in dependency
    order, recording each operation and checking its verifier before proceeding.
 5. Write managed installation state into the stage, then perform final
@@ -132,8 +133,9 @@ and UI code should not gain release-specific version branches.
    as a rollback generation, move the verified stage into the final path, and
    restore the previous generation if the swap fails.
 
-The transaction engine copies the source into a unique sibling staging folder,
-writes versioned JSON state into that stage, retains an existing destination as
+The transaction engine creates an empty unique sibling staging folder. Modules
+copy only their explicitly owned source and package files into that stage, then
+the coordinator writes versioned JSON state there. It retains an existing destination as
 a rollback generation only after explicit replacement approval, and restores
 that prior destination if finalization fails. These primitives are implemented
 and covered by tests. The GUI currently blocks before staging because the
@@ -198,9 +200,8 @@ detects Steam installs, offers Browse, shows the recommended modules, and has
 an expandable **Advanced options** destination field. It does not require
 Visual Studio, CMake, Git, BAT use, or manual DLL copying from users.
 
-One-click installation depends on having an authorized, verifiable Maniacs
-package source and a verified way to apply the official Maniacs process. Until
-those conditions are met, show the required step clearly and keep it explicit;
-do not claim that the current prototype is unattended. The setup distribution
-must not contain proprietary Steam RPG Maker files or Maniacs files without
-clear redistribution permission.
+The Maniacs, English, and Arabic Editor modules are ready when the exact
+user-supplied 241029 package is selected and accepted. EasyRPG-Arabic Player
+integration remains unavailable. The setup distribution must not contain
+proprietary Steam RPG Maker or Maniacs files without clear redistribution
+permission.
