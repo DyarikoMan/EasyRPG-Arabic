@@ -25,11 +25,13 @@
 #include "text.h"
 #include "compiler.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,18 +39,16 @@
 
 namespace {
 
-bool ContainsArabicScript(std::u32string_view text) {
-	for (char32_t c : text) {
-		if ((c >= 0x0600 && c <= 0x06FF) ||
-			(c >= 0x0750 && c <= 0x077F) ||
-			(c >= 0x08A0 && c <= 0x08FF) ||
-			(c >= 0xFB50 && c <= 0xFDFF) ||
-			(c >= 0xFE70 && c <= 0xFEFF)) {
-			return true;
-		}
-	}
+bool IsArabicScript(char32_t c) {
+	return (c >= 0x0600 && c <= 0x06FF) ||
+		(c >= 0x0750 && c <= 0x077F) ||
+		(c >= 0x08A0 && c <= 0x08FF) ||
+		(c >= 0xFB50 && c <= 0xFDFF) ||
+		(c >= 0xFE70 && c <= 0xFEFF);
+}
 
-	return false;
+bool ContainsArabicScript(std::u32string_view text) {
+	return std::any_of(text.begin(), text.end(), IsArabicScript);
 }
 
 std::vector<Font::ShapeRet> ShapeWithBidi(const Font& font, std::u32string_view text,
@@ -158,6 +158,252 @@ std::vector<Font::ShapeRet> ShapeWithBidi(const Font& font, std::u32string_view 
 	return shaped_text;
 }
 
+struct InlineBidiUnit {
+	char32_t glyph = 0;
+	bool is_exfont = false;
+	int32_t utf16_start = 0;
+	int32_t utf16_end = 0;
+};
+
+struct InlineBidiItem {
+	bool is_exfont = false;
+	char32_t glyph = 0;
+	std::vector<Font::ShapeRet> shaped_text;
+	int x = 0;
+	int width = 0;
+	int height = 0;
+	bool rtl = false;
+};
+
+struct InlineBidiLayout {
+	std::vector<InlineBidiItem> items;
+	Rect size;
+	int logical_end_offset = 0;
+};
+
+/**
+ * Builds one ICU paragraph for Arabic text that contains inline ExFont objects.
+ * Each parsed ExFont token is represented by one U+FFFC during BiDi analysis;
+ * the original token is retained in its unit and rendered through the usual
+ * ExFont path below.
+ */
+std::optional<InlineBidiLayout> BuildInlineBidiLayout(const Font& font, std::string_view text) {
+	if (!font.CanShape()) {
+		return std::nullopt;
+	}
+
+	std::vector<InlineBidiUnit> units;
+	bool has_arabic = false;
+	bool has_exfont = false;
+	auto iter = text.data();
+	const auto end = iter + text.size();
+	while (iter != end) {
+		const auto ret = Utils::TextNext(iter, end, 0);
+		if (ret.next <= iter) {
+			break;
+		}
+		iter = ret.next;
+		if (!ret) {
+			continue;
+		}
+
+		// Preserve the existing control-character path, which has its own line
+		// and control handling and is not used by the Name Input field.
+		if (!ret.is_exfont && Utils::IsControlCharacter(ret.ch)) {
+			return std::nullopt;
+		}
+
+		InlineBidiUnit unit;
+		unit.glyph = ret.ch;
+		unit.is_exfont = ret.is_exfont;
+		units.push_back(unit);
+		has_exfont = has_exfont || ret.is_exfont;
+		has_arabic = has_arabic || (!ret.is_exfont && IsArabicScript(ret.ch));
+	}
+
+	// Leave every existing LTR/non-Arabic path exactly as it is. The inline
+	// layout is needed when ExFont would otherwise split an Arabic paragraph.
+	if (!has_arabic || !has_exfont || units.empty()) {
+		return std::nullopt;
+	}
+
+	std::vector<UChar> text16;
+	text16.reserve(units.size());
+	for (auto& unit : units) {
+		const uint32_t codepoint = static_cast<uint32_t>(unit.is_exfont ? 0xFFFC : unit.glyph);
+		const size_t code_units = codepoint <= 0xFFFF ? 1 : 2;
+		if (text16.size() > static_cast<size_t>(std::numeric_limits<int32_t>::max()) - code_units) {
+			return std::nullopt;
+		}
+		unit.utf16_start = static_cast<int32_t>(text16.size());
+		if (codepoint <= 0xFFFF) {
+			text16.push_back(static_cast<UChar>(codepoint));
+		} else {
+			const uint32_t supplementary = codepoint - 0x10000;
+			text16.push_back(static_cast<UChar>(0xD800 + (supplementary >> 10)));
+			text16.push_back(static_cast<UChar>(0xDC00 + (supplementary & 0x3FF)));
+		}
+		unit.utf16_end = static_cast<int32_t>(text16.size());
+	}
+
+	if (text16.size() > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+		return std::nullopt;
+	}
+
+	InlineBidiLayout layout;
+	std::vector<size_t> unit_to_item(units.size(), std::numeric_limits<size_t>::max());
+	const auto append_text_item = [&font, &layout, &unit_to_item, &units](
+			const std::vector<size_t>& visual_units, Font::ShapeDirection direction) {
+		if (visual_units.empty()) {
+			return;
+		}
+
+		std::vector<size_t> logical_units = visual_units;
+		if (direction == Font::ShapeDirection::RTL) {
+			std::reverse(logical_units.begin(), logical_units.end());
+		}
+
+		std::u32string logical_text;
+		logical_text.reserve(logical_units.size());
+		for (const size_t unit_index : logical_units) {
+			logical_text.push_back(units[unit_index].glyph);
+		}
+
+		InlineBidiItem item;
+		item.shaped_text = font.Shape(logical_text, direction);
+		item.rtl = direction == Font::ShapeDirection::RTL;
+		for (const auto& glyph : item.shaped_text) {
+			const Rect glyph_size = font.GetSize(glyph);
+			item.width += glyph_size.width;
+			item.height = std::max(item.height, glyph_size.height);
+		}
+		item.x = layout.size.width;
+
+		const size_t item_index = layout.items.size();
+		for (const size_t unit_index : visual_units) {
+			unit_to_item[unit_index] = item_index;
+		}
+		layout.size.width += item.width;
+		layout.size.height = std::max(layout.size.height, item.height);
+		layout.items.push_back(std::move(item));
+	};
+
+	const auto append_exfont_item = [&font, &layout, &unit_to_item, &units](
+			size_t unit_index, Font::ShapeDirection direction) {
+		InlineBidiItem item;
+		item.is_exfont = true;
+		item.glyph = units[unit_index].glyph;
+		item.rtl = direction == Font::ShapeDirection::RTL;
+		const Rect glyph_size = Text::GetSize(font, item.glyph, true);
+		item.width = glyph_size.width;
+		item.height = glyph_size.height;
+		item.x = layout.size.width;
+
+		unit_to_item[unit_index] = layout.items.size();
+		layout.size.width += item.width;
+		layout.size.height = std::max(layout.size.height, item.height);
+		layout.items.push_back(std::move(item));
+	};
+
+	const auto append_visual_run = [&units, &append_text_item, &append_exfont_item](
+			std::vector<size_t> visual_units, Font::ShapeDirection direction) {
+		if (direction == Font::ShapeDirection::RTL) {
+			std::reverse(visual_units.begin(), visual_units.end());
+		}
+
+		std::vector<size_t> text_units;
+		const auto flush_text = [&]() {
+			append_text_item(text_units, direction);
+			text_units.clear();
+		};
+		for (const size_t unit_index : visual_units) {
+			if (units[unit_index].is_exfont) {
+				flush_text();
+				append_exfont_item(unit_index, direction);
+			} else {
+				text_units.push_back(unit_index);
+			}
+		}
+		flush_text();
+	};
+
+	bool bidi_succeeded = false;
+	UErrorCode bidi_status = U_ZERO_ERROR;
+	std::unique_ptr<UBiDi, decltype(&ubidi_close)> bidi(
+		ubidi_openSized(static_cast<int32_t>(text16.size()), 0, &bidi_status),
+		&ubidi_close
+	);
+	if (U_SUCCESS(bidi_status) && bidi) {
+		const int32_t text16_length = static_cast<int32_t>(text16.size());
+		ubidi_setPara(bidi.get(), text16.data(), text16_length, UBIDI_RTL, nullptr, &bidi_status);
+		if (U_SUCCESS(bidi_status)) {
+			const int32_t run_count = ubidi_countRuns(bidi.get(), &bidi_status);
+			if (U_SUCCESS(bidi_status)) {
+				bidi_succeeded = true;
+				for (int32_t visual_run = 0; visual_run < run_count; ++visual_run) {
+					int32_t logical_start = 0;
+					int32_t run_length = 0;
+					const UBiDiDirection direction = ubidi_getVisualRun(
+						bidi.get(), visual_run, &logical_start, &run_length);
+					if (logical_start < 0 || run_length < 0 ||
+							logical_start > text16_length - run_length) {
+						bidi_succeeded = false;
+						break;
+					}
+
+					const int32_t run_end = logical_start + run_length;
+					std::vector<size_t> visual_units;
+					for (size_t i = 0; i < units.size(); ++i) {
+						if (units[i].utf16_start >= logical_start && units[i].utf16_end <= run_end) {
+							visual_units.push_back(i);
+					}
+					}
+					const Font::ShapeDirection shape_direction = direction == UBIDI_RTL
+						? Font::ShapeDirection::RTL
+						: Font::ShapeDirection::LTR;
+					append_visual_run(std::move(visual_units), shape_direction);
+				}
+			}
+		}
+	}
+
+	if (!bidi_succeeded || std::find(unit_to_item.begin(), unit_to_item.end(),
+			std::numeric_limits<size_t>::max()) != unit_to_item.end()) {
+		// Allocation/ICU failures are rare, but still keep all Arabic segments
+		// in one RTL fallback sequence instead of restarting after each object.
+		layout = {};
+		std::fill(unit_to_item.begin(), unit_to_item.end(), std::numeric_limits<size_t>::max());
+		std::vector<size_t> visual_units(units.size());
+		for (size_t i = 0; i < units.size(); ++i) {
+			visual_units[i] = i;
+		}
+		append_visual_run(std::move(visual_units), Font::ShapeDirection::RTL);
+	}
+
+	const size_t logical_end_item = unit_to_item.back();
+	const InlineBidiItem& item = layout.items[logical_end_item];
+	bool logical_end_rtl = item.rtl;
+	if (units.back().is_exfont) {
+		// ICU may resolve a terminal neutral object as an LTR run at paragraph
+		// end. The insertion boundary after that object follows the preceding
+		// logical text run, while the object's visual placement remains ICU's.
+		bool preceding_text_found = false;
+		for (size_t i = units.size() - 1; i > 0; --i) {
+			const size_t preceding_unit = i - 1;
+			if (!units[preceding_unit].is_exfont) {
+				logical_end_rtl = layout.items[unit_to_item[preceding_unit]].rtl;
+				preceding_text_found = true;
+				break;
+			}
+		}
+		if (!preceding_text_found) {
+			logical_end_rtl = true;
+		}
+	}
+	layout.logical_end_offset = item.x + (logical_end_rtl ? 0 : item.width);
+	return layout;
+}
+
 int GetShapedTextWidth(const Font& font, const std::vector<Font::ShapeRet>& shaped_text) {
 	int width = 0;
 	for (const auto& glyph : shaped_text) {
@@ -181,6 +427,20 @@ int DrawShapedText(Bitmap& dest, int x, int y, const Font& font, const Bitmap& s
 	int next_glyph_pos = 0;
 	for (const auto& glyph : shaped_text) {
 		next_glyph_pos += font.Render(dest, x + next_glyph_pos, y, system, color, glyph).x;
+	}
+	return next_glyph_pos;
+}
+
+int DrawShapedText(Bitmap& dest, int x, int y, const Font& font, Color color,
+		const std::vector<Font::ShapeRet>& shaped_text, bool bidi) {
+	int next_glyph_pos = 0;
+	for (const auto& glyph : shaped_text) {
+		if (bidi) {
+			font.Render(dest, x + next_glyph_pos, y, color, glyph);
+			next_glyph_pos += font.GetSize(glyph).width;
+		} else {
+			next_glyph_pos += font.Render(dest, x + next_glyph_pos, y, color, glyph).x;
+		}
 	}
 	return next_glyph_pos;
 }
@@ -236,7 +496,8 @@ Point Text::Draw(Bitmap& dest, int x, int y, const Font& font, Color color, char
 Point Text::Draw(Bitmap& dest, const int x, const int y, const Font& font, const Bitmap& system, const int color, std::string_view text, const Text::Alignment align) {
 	if (text.length() == 0) return { 0, 0 };
 
-	Rect dst_rect = Text::GetSize(font, text);
+	auto inline_layout = BuildInlineBidiLayout(font, text);
+	Rect dst_rect = inline_layout ? inline_layout->size : Text::GetSize(font, text);
 
 	const int ih = dst_rect.height;
 
@@ -255,6 +516,18 @@ Point Text::Draw(Bitmap& dest, const int x, const int y, const Font& font, const
 
 	const int iy = dst_rect.y;
 	const int ix = dst_rect.x;
+	if (inline_layout) {
+		int drawn_width = 0;
+		for (const auto& item : inline_layout->items) {
+			if (item.is_exfont) {
+				drawn_width += Draw(dest, ix + item.x, iy, font, system, color, item.glyph, true).x;
+			} else {
+				drawn_width += DrawShapedText(dest, ix + item.x, iy, font, system, color,
+					item.shaped_text, true);
+			}
+		}
+		return { drawn_width, ih };
+	}
 
 	// Where to draw the next glyph (x pos)
 	int next_glyph_pos = 0;
@@ -318,6 +591,19 @@ Point Text::Draw(Bitmap& dest, const int x, const int y, const Font& font, const
 Point Text::Draw(Bitmap& dest, const int x, const int y, const Font& font, const Color color, std::string_view text) {
 	if (text.length() == 0) return { 0, 0 };
 
+	if (auto inline_layout = BuildInlineBidiLayout(font, text)) {
+		int drawn_width = 0;
+		for (const auto& item : inline_layout->items) {
+			if (item.is_exfont) {
+				drawn_width += Draw(dest, x + item.x, y, font, color, item.glyph, true).x;
+			} else {
+				drawn_width += DrawShapedText(dest, x + item.x, y, font, color,
+					item.shaped_text, true);
+			}
+		}
+		return { drawn_width, inline_layout->size.height };
+	}
+
 	int dx = x;
 	int mx = x;
 
@@ -357,6 +643,10 @@ Point Text::Draw(Bitmap& dest, const int x, const int y, const Font& font, const
 }
 
 Rect Text::GetSize(const Font& font, std::string_view text) {
+	if (auto inline_layout = BuildInlineBidiLayout(font, text)) {
+		return inline_layout->size;
+	}
+
 	Rect rect;
 	Rect rect_tmp;
 
@@ -421,6 +711,10 @@ Rect Text::GetSize(const Font& font, std::string_view text) {
 }
 
 int Text::GetLogicalEndCaretOffset(const Font& font, std::string_view text) {
+	if (auto inline_layout = BuildInlineBidiLayout(font, text)) {
+		return inline_layout->logical_end_offset;
+	}
+
 	if (!font.CanShape()) {
 		// Preserve the existing unshaped RTL offset within each text segment,
 		// while accounting for ExFont tokens as separately rendered glyphs.

@@ -229,8 +229,7 @@ TEST_CASE("RTL ExFont caret stays immediately left of the final rendered icon") 
 	CHECK(name.GetCursorRect().x == Window_Name::GetCaretX(true, contents_width,
 			Text::GetSize(*Font::Default(), name.Get()).width));
 
-	// ExFont tokens before Arabic remain measured as rendered icons followed by
-	// an Arabic run; the logical end stays at the Arabic run's visual left edge.
+	// Preserve the existing non-shaping-font fallback behavior.
 	const std::string icon_then_arabic = "$Aمحمد";
 	name.Set(icon_then_arabic);
 	name.Update();
@@ -255,6 +254,19 @@ TEST_CASE("RTL ExFont caret stays immediately left of the final rendered icon") 
 	CHECK(ltr_name.GetCursorRect().x == Text::GetSize(*Font::Default(), ltr_name.Get()).width + 2);
 }
 
+TEST_CASE("RTL name can continue Arabic after erasing an inline ExFont token") {
+	MockGame game(MockMap::eNone);
+	Window_Name name(0, 0, 192, 32, true);
+
+	name.Set("ابت$A");
+	name.Erase();
+	CHECK(name.Get() == "ابت");
+	name.Append("جح");
+	CHECK(name.Get() == "ابتجح");
+	name.Update();
+	CHECK(name.GetCursorRect().x >= 0);
+}
+
 TEST_CASE("RTL ExFont caret uses the active Maniacs extended token parser") {
 	MockGame game(MockMap::eNone);
 	const int previous_patch_setting = Player::game_config.patch_maniac.Get();
@@ -270,9 +282,13 @@ TEST_CASE("RTL ExFont caret uses the active Maniacs extended token parser") {
 	const int prefix_width = Text::GetSize(*Font::Default(), "محمد").width;
 	const int total_width = Text::GetSize(*Font::Default(), name.Get()).width;
 	const int text_left = name.GetContents()->GetWidth() - 2 - total_width;
-	const int icon_left = text_left + prefix_width;
 	CHECK(Text::GetLogicalEndCaretOffset(*Font::Default(), name.Get()) == prefix_width);
-	CHECK(name.GetCursorRect().x + name.GetCursorRect().width == icon_left);
+	CHECK(name.GetCursorRect().x + name.GetCursorRect().width == text_left + prefix_width);
+
+	name.Set("محمد$[43]علي");
+	name.Update();
+	const int before_suffix_width = Text::GetSize(*Font::Default(), "محمد$[43]").width;
+	CHECK(Text::GetLogicalEndCaretOffset(*Font::Default(), name.Get()) == before_suffix_width);
 }
 
 TEST_CASE("Name direction stays with the session across its keyboard pages") {

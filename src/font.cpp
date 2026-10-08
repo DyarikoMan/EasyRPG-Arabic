@@ -1067,6 +1067,24 @@ Point Font::Render(Bitmap& dest, int x, int y, Color const& color, char32_t glyp
 	return gret.advance;
 }
 
+Point Font::Render(Bitmap& dest, int x, int y, Color const& color, const ShapeRet& shape) const {
+	if (shape.not_found) {
+		return Render(dest, x, y, color, shape.code);
+	}
+
+	auto gret = vRenderShaped(shape.code);
+	if (EP_UNLIKELY(gret.bitmap == nullptr)) {
+		return {};
+	}
+
+	const Rect rect(x + gret.offset.x, GetGlyphRenderY(y, gret.offset.y),
+		gret.bitmap->width(), gret.bitmap->height());
+	dest.MaskedBlit(rect, *gret.bitmap, 0, 0, color);
+
+	Point advance = { shape.advance.x + current_style.letter_spacing, shape.advance.y };
+	return advance;
+}
+
 bool Font::CanShape() const {
 	return vCanShape();
 }

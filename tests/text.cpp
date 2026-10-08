@@ -4,6 +4,7 @@
 #include "bitmap.h"
 #include "font.h"
 #include "window_name.h"
+#include "mock_game.h"
 #include <iostream>
 #include <string>
 #include <utility>
@@ -74,6 +75,73 @@ private:
 		}
 		return {Bitmap::Create(1, 1, color), Point(1, 0), Point(0, 0), true};
 	}
+};
+
+Color InlineGlyphColor(char32_t glyph) {
+	return Color(
+		static_cast<uint8_t>((static_cast<uint32_t>(glyph) * 37) % 251),
+		static_cast<uint8_t>((static_cast<uint32_t>(glyph) * 53) % 251),
+		static_cast<uint8_t>((static_cast<uint32_t>(glyph) * 71) % 251), 255);
+}
+
+class InlineBidiTestFont : public Font {
+public:
+	InlineBidiTestFont() : Font("inline-bidi-test", 12, false, false) {}
+
+protected:
+	Rect vGetSize(char32_t) const override {
+		return {0, 0, 1, 12};
+	}
+
+	GlyphRet vRender(char32_t glyph) const override {
+		return RenderGlyph(glyph);
+	}
+
+	GlyphRet vRenderShaped(char32_t glyph) const override {
+		return RenderGlyph(glyph);
+	}
+
+	bool vCanShape() const override {
+		return true;
+	}
+
+	std::vector<ShapeRet> vShape(std::u32string_view text, ShapeDirection direction) const override {
+		std::vector<ShapeRet> shaped;
+		shaped.reserve(text.size());
+		if (direction == ShapeDirection::RTL) {
+			for (auto iter = text.rbegin(); iter != text.rend(); ++iter) {
+				shaped.push_back({*iter, Point(1, 0), Point(0, 0), false});
+			}
+		} else {
+			for (const char32_t glyph : text) {
+				shaped.push_back({glyph, Point(1, 0), Point(0, 0), false});
+			}
+		}
+		return shaped;
+	}
+
+private:
+	GlyphRet RenderGlyph(char32_t glyph) const {
+		return {Bitmap::Create(1, 1, InlineGlyphColor(glyph)), Point(1, 0), Point(0, 0), true};
+	}
+};
+
+class InlineBidiTestExFont : public Font {
+public:
+	InlineBidiTestExFont() : Font("inline-bidi-test-exfont", 12, false, false) {}
+
+protected:
+	Rect vGetSize(char32_t) const override {
+		return {0, 0, icon_width, 12};
+	}
+
+	GlyphRet vRender(char32_t) const override {
+		return {Bitmap::Create(icon_width, 1, icon_color), Point(icon_width, 0), Point(0, 0), true};
+	}
+
+private:
+	static constexpr int icon_width = 2;
+	static constexpr Color icon_color = Color(0, 255, 0, 255);
 };
 
 bool HasShapeCall(const BidiVisualOrderTestFont& font, std::u32string_view text, Font::ShapeDirection direction) {
@@ -197,13 +265,131 @@ TEST_CASE("Logical end caret offset follows ICU visual runs in RTL name strings"
 
 TEST_CASE("RTL caret offset stops before a trailing ExFont icon") {
 	BidiVisualOrderTestFont font;
-	const int arabic_width = Text::GetSize(font, "محمد").width;
-	const int icon_width = Text::GetSize(font, "$A").width;
 
 	CHECK(Text::GetLogicalEndCaretOffset(font, "$A") == 0);
-	CHECK(Text::GetLogicalEndCaretOffset(font, "محمد$A") == arabic_width);
-	CHECK(Text::GetLogicalEndCaretOffset(font, "محمد$A$B") == arabic_width + icon_width);
-	CHECK(Text::GetLogicalEndCaretOffset(font, "$Aمحمد") == icon_width);
+	CHECK(Text::GetLogicalEndCaretOffset(font, "محمد$A") == 0);
+	CHECK(Text::GetLogicalEndCaretOffset(font, "محمد$A$B") == 0);
+	CHECK(Text::GetLogicalEndCaretOffset(font, "$Aمحمد") == 0);
+}
+
+TEST_CASE("Arabic text and ExFont icons share one visual BiDi paragraph") {
+	Bitmap::SetFormat(format_R8G8B8A8_a().format());
+	const FontRef original_exfont = Font::exfont;
+	struct ExFontRestore {
+		FontRef original;
+		~ExFontRestore() { Font::exfont = std::move(original); }
+	} restore{original_exfont};
+	Font::exfont = std::make_shared<InlineBidiTestExFont>();
+
+	InlineBidiTestFont font;
+	auto surface = Bitmap::Create(64, 16, true);
+	auto system = Cache::SysBlack();
+	const Color icon_color(0, 255, 0, 255);
+	const auto icon = [&icon_color]() { return std::vector<Color>{icon_color, icon_color}; };
+	const auto glyph = [](std::u32string_view text) {
+		std::vector<Color> colors;
+		for (const char32_t codepoint : text) {
+			colors.push_back(InlineGlyphColor(codepoint));
+		}
+		return colors;
+	};
+	const auto colors_match = [](Color actual, Color expected) {
+		const auto within_one = [](uint8_t left, uint8_t right) {
+			return left <= right ? right - left <= 1 : left - right <= 1;
+		};
+		return within_one(actual.red, expected.red) && within_one(actual.green, expected.green) &&
+			within_one(actual.blue, expected.blue) && actual.alpha == expected.alpha;
+	};
+	const auto check_visual = [&](std::string_view text, const std::vector<Color>& expected) {
+		surface->Clear();
+		const Point drawn = Text::Draw(*surface, 0, 4, font, *system, 0, text);
+		const Rect measured = Text::GetSize(font, text);
+		CHECK(drawn.x == measured.width);
+		CHECK(drawn.x == static_cast<int>(expected.size()));
+		for (size_t i = 0; i < expected.size(); ++i) {
+			CHECK(colors_match(surface->GetColorAt(static_cast<int>(i), 0), expected[i]));
+		}
+
+		auto solid_surface = Bitmap::Create(64, 16, true);
+		const Point solid_drawn = Text::Draw(*solid_surface, 0, 4, font,
+			Color(255, 255, 255, 255), text);
+		CHECK(solid_drawn.x == measured.width);
+		for (int x = 0; x < measured.width; ++x) {
+			CHECK(solid_surface->GetColorAt(x, 0).alpha == 255);
+		}
+	};
+
+	// Logical order is ا ب ت [icon] ج ح. ICU's single RTL paragraph places
+	// the suffix at the visual left, then the object, then the prefix.
+	// Keep the expected sequence explicit and without a visual-space glyph.
+	const std::vector<Color> expected_one_icon = {
+		InlineGlyphColor(U'ح'), InlineGlyphColor(U'ج'),
+		icon_color, icon_color,
+		InlineGlyphColor(U'ت'), InlineGlyphColor(U'ب'), InlineGlyphColor(U'ا')
+	};
+	check_visual("ابت$Aجح", expected_one_icon);
+	CHECK(Text::GetLogicalEndCaretOffset(font, "ابت$Aجح") == 0);
+
+	const std::vector<Color> expected_trailing_icon = {
+		icon_color, icon_color,
+		InlineGlyphColor(U'ت'), InlineGlyphColor(U'ب'), InlineGlyphColor(U'ا')
+	};
+	check_visual("ابت$A", expected_trailing_icon);
+	CHECK(Text::GetLogicalEndCaretOffset(font, "ابت$A") == 0);
+	const std::vector<Color> expected_trailing_icons = {
+		icon_color, icon_color, icon_color, icon_color,
+		InlineGlyphColor(U'ت'), InlineGlyphColor(U'ب'), InlineGlyphColor(U'ا')
+	};
+	check_visual("ابت$A$B", expected_trailing_icons);
+	CHECK(Text::GetLogicalEndCaretOffset(font, "ابت$A$B") == 0);
+
+	const std::vector<Color> expected_two_icons = {
+		InlineGlyphColor(U'ه'), InlineGlyphColor(U'خ'), icon_color, icon_color,
+		InlineGlyphColor(U'ح'), InlineGlyphColor(U'ج'), icon_color, icon_color,
+		InlineGlyphColor(U'ت'), InlineGlyphColor(U'ب'), InlineGlyphColor(U'ا')
+	};
+	check_visual("ابت$Aجح$Bخه", expected_two_icons);
+	CHECK(Text::GetLogicalEndCaretOffset(font, "ابت$Aجح$Bخه") == 0);
+
+	const auto icon_then_arabic = [&]() {
+		auto expected = glyph(U"تبا");
+		auto object = icon();
+		expected.insert(expected.end(), object.begin(), object.end());
+		return expected;
+	}();
+	check_visual("$Aابت", icon_then_arabic);
+	CHECK(Text::GetLogicalEndCaretOffset(font, "$Aابت") == 0);
+
+	{
+		MockGame game(MockMap::eNone);
+		const int previous_patch_setting = Player::game_config.patch_maniac.Get();
+		struct PatchManiacRestore {
+			int setting;
+			~PatchManiacRestore() { Player::game_config.patch_maniac.Set(setting); }
+		} restore_patch{previous_patch_setting};
+		Player::game_config.patch_maniac.Set(true);
+		check_visual("ابت$[43]جح", expected_one_icon);
+		CHECK(Text::GetLogicalEndCaretOffset(font, "ابت$[43]جح") == 0);
+	}
+
+	// The same layout keeps width and drawing advances aligned for mixed runs.
+	for (const std::string_view mixed : {
+		"ابت$A123", "ابت$AABC", "ABC$Aابت", "ابت123$Aجح", "ابت$A"
+	}) {
+		surface->Clear();
+		const Point drawn = Text::Draw(*surface, 0, 4, font, *system, 0, mixed);
+		const Rect measured = Text::GetSize(font, mixed);
+		CHECK(drawn.x == measured.width);
+		for (int x = 0; x < measured.width; ++x) {
+			CHECK(surface->GetColorAt(x, 0).alpha == 255);
+		}
+	}
+	// The existing LTR sequence remains in logical left-to-right order.
+	const std::vector<Color> expected_ltr = {
+		InlineGlyphColor(U'A'), InlineGlyphColor(U'B'), InlineGlyphColor(U'C'),
+		icon_color, icon_color
+	};
+	check_visual("ABC$A", expected_ltr);
 }
 
 TEST_CASE("GlyphRenderUsesGlobalVerticalOffset") {

@@ -176,6 +176,18 @@ struct ShapeRet {
 	Point Render(Bitmap& dest, int x, int y, Color const& color, char32_t glyph) const;
 
 	/**
+	 * Renders a shaped glyph without a shadow using a solid color.
+	 *
+	 * @param dest bitmap to render to
+	 * @param x X offset to render glyph
+	 * @param y Y offset to render glyph
+	 * @param color color to use
+	 * @param shape shaping information for the glyph
+	 * @return advance in x/y direction
+	 */
+	Point Render(Bitmap& dest, int x, int y, Color const& color, const ShapeRet& shape) const;
+
+	/**
 	 * Determines if the used font supports shaping.
 	 * This will only return true when the font uses FreeType and HarfBuzz is enabled.
 	 *
