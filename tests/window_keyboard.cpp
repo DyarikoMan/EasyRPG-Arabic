@@ -96,26 +96,39 @@ TEST_CASE("Window_Keyboard starts Arabic at alef on the visual top-right") {
 
 TEST_CASE("Arabic name input displays Arabic labels and preserves control sentinels") {
 	MockGame game(MockMap::eNone);
-	Window_Keyboard keyboard(0, 0);
+	class TestKeyboard : public Window_Keyboard {
+	public:
+		using Window_Keyboard::Window_Keyboard;
+		void Select(int selected_row, int selected_col) {
+			row = selected_row;
+			col = selected_col;
+		}
+	};
+	TestKeyboard keyboard(0, 0, 320, 80, "صافي", true, "مسافة");
 
 	keyboard.SetMode(Window_Keyboard::Arabic, Window_Keyboard::Symbol);
 	CHECK(keyboard.GetSelected() == "ا");
+	keyboard.Select(7, 0);
+	CHECK(keyboard.GetSelected() == Window_Keyboard::SPACE);
 	CHECK(keyboard.GetKey(7, 0) == "مسافة");
-	CHECK(keyboard.GetKey(8, 8) == "تم");
+	keyboard.Select(8, 8);
+	CHECK(keyboard.GetSelected() == Window_Keyboard::DONE);
+	CHECK(keyboard.GetKey(8, 8) == "صافي");
 	CHECK(keyboard.GetKey(8, 6) == Window_Keyboard::layouts[Window_Keyboard::Symbol].key_text);
 	CHECK(Window_Keyboard::layouts[Window_Keyboard::Arabic].items[7][0] == Window_Keyboard::SPACE);
 	CHECK(Window_Keyboard::layouts[Window_Keyboard::Arabic].items[8][8] == Window_Keyboard::DONE);
 
 	keyboard.SetMode(Window_Keyboard::Symbol, Window_Keyboard::Arabic);
-	CHECK(keyboard.GetKey(8, 8) == "تم");
+	CHECK(keyboard.GetKey(8, 8) == "صافي");
 	CHECK(keyboard.GetKey(8, 6) == Window_Keyboard::layouts[Window_Keyboard::Arabic].key_text);
 	CHECK(Window_Keyboard::layouts[Window_Keyboard::Symbol].items[8][8] == Window_Keyboard::DONE);
 
-	keyboard.SetMode(Window_Keyboard::Letter, Window_Keyboard::Symbol);
-	CHECK(keyboard.GetKey(7, 0) == Window_Keyboard::SPACE);
-	CHECK(keyboard.GetKey(8, 8) == Window_Keyboard::DONE);
-	keyboard.SetMode(Window_Keyboard::Symbol, Window_Keyboard::Letter);
-	CHECK(keyboard.GetKey(8, 8) == Window_Keyboard::DONE);
+	Window_Keyboard ltr_keyboard(0, 0);
+	ltr_keyboard.SetMode(Window_Keyboard::Letter, Window_Keyboard::Symbol);
+	CHECK(ltr_keyboard.GetKey(7, 0) == Window_Keyboard::SPACE);
+	CHECK(ltr_keyboard.GetKey(8, 8) == Window_Keyboard::DONE);
+	ltr_keyboard.SetMode(Window_Keyboard::Symbol, Window_Keyboard::Letter);
+	CHECK(ltr_keyboard.GetKey(8, 8) == Window_Keyboard::DONE);
 }
 
 TEST_CASE("Arabic keyboard navigation follows visual directions and skips empty cells") {

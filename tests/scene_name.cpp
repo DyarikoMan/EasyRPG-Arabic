@@ -2,6 +2,9 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <sstream>
+
+#include <lcf/inireader.h>
 
 TEST_SUITE_BEGIN("Scene_Name");
 
@@ -26,6 +29,70 @@ TEST_CASE("Non-Arabic page sequence preserves charset selection and Letter/Symbo
 		Window_Keyboard::Hiragana, Window_Keyboard::Katakana, Window_Keyboard::Letter, Window_Keyboard::Symbol
 	}));
 	CHECK(pages.initial_index == 1);
+}
+
+TEST_CASE("Name Input label defaults and RPG_RT.ini overrides are resolved by session") {
+	const std::string arabic_ini =
+		"[RPG_RT]\nNameInputSpace=فراغ\nNameInputDone=مزيان\n";
+	std::istringstream arabic_stream(arabic_ini);
+	lcf::INIReader arabic_reader(arabic_stream);
+	const auto arabic = ResolveSceneNameKeyboardLabels(true, "<Done>", "65001", &arabic_reader);
+	CHECK(arabic.space == "فراغ");
+	CHECK(arabic.done == "مزيان");
+
+	const std::string space_only_ini = "[RPG_RT]\nNameInputSpace=فراغ\n";
+	std::istringstream space_stream(space_only_ini);
+	lcf::INIReader space_reader(space_stream);
+	const auto space_only = ResolveSceneNameKeyboardLabels(true, "<Done>", "65001", &space_reader);
+	CHECK(space_only.space == "فراغ");
+	CHECK(space_only.done == "صافي");
+
+	const std::string done_only_ini = "[RPG_RT]\nNameInputDone=مزيان\n";
+	std::istringstream done_stream(done_only_ini);
+	lcf::INIReader done_reader(done_stream);
+	const auto done_only = ResolveSceneNameKeyboardLabels(true, "<Done>", "65001", &done_reader);
+	CHECK(done_only.space == "مسافة");
+	CHECK(done_only.done == "مزيان");
+
+	const auto arabic_without_ini = ResolveSceneNameKeyboardLabels(true, "<Done>", "65001", nullptr);
+	CHECK(arabic_without_ini.space == "مسافة");
+	CHECK(arabic_without_ini.done == "صافي");
+
+	const auto non_arabic_without_ini = ResolveSceneNameKeyboardLabels(false, "<OK>", "65001", nullptr);
+	CHECK(non_arabic_without_ini.space == Window_Keyboard::SPACE);
+	CHECK(non_arabic_without_ini.done == "<OK>");
+
+	const std::string non_arabic_ini = "[RPG_RT]\nNameInputSpace=Spacebar\nNameInputDone=Finish\n";
+	std::istringstream non_arabic_stream(non_arabic_ini);
+	lcf::INIReader non_arabic_reader(non_arabic_stream);
+	const auto non_arabic = ResolveSceneNameKeyboardLabels(false, "<OK>", "65001", &non_arabic_reader);
+	CHECK(non_arabic.space == "Spacebar");
+	CHECK(non_arabic.done == "Finish");
+}
+
+TEST_CASE("Name Input label overrides use the RPG_RT section and ignore empty values") {
+	const std::string other_section_ini = "[EasyRPG]\nNameInputSpace=Wrong\nNameInputDone=Wrong\n";
+	std::istringstream other_section_stream(other_section_ini);
+	lcf::INIReader other_section_reader(other_section_stream);
+	const auto other_section = ResolveSceneNameKeyboardLabels(true, "<Done>", "65001", &other_section_reader);
+	CHECK(other_section.space == "مسافة");
+	CHECK(other_section.done == "صافي");
+
+	const std::string empty_ini = "[RPG_RT]\nNameInputSpace=\nNameInputDone=\n";
+	std::istringstream empty_stream(empty_ini);
+	lcf::INIReader empty_reader(empty_stream);
+	const auto empty = ResolveSceneNameKeyboardLabels(true, "<Done>", "65001", &empty_reader);
+	CHECK(empty.space == "مسافة");
+	CHECK(empty.done == "صافي");
+
+	// The TEST project's RPG_RT.ini has no Encoding entry, so the Arabic fork's
+	// normal fallback code page (1256) is used for its Arabic label bytes.
+	const std::string cp1256_ini = "[RPG_RT]\nNameInputSpace=\xE3\xD3\xC7\xDD\xC9\nNameInputDone=\xD5\xC7\xDD\xED\n";
+	std::istringstream cp1256_stream(cp1256_ini);
+	lcf::INIReader cp1256_reader(cp1256_stream);
+	const auto cp1256 = ResolveSceneNameKeyboardLabels(true, "<Done>", "1256", &cp1256_reader);
+	CHECK(cp1256.space == "مسافة");
+	CHECK(cp1256.done == "صافي");
 }
 
 TEST_CASE("Name scene keeps the existing LTR upper-window geometry") {

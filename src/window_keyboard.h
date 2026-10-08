@@ -18,6 +18,7 @@
 #ifndef EP_WINDOW_KEYBOARD_H
 #define EP_WINDOW_KEYBOARD_H
 
+#include <string>
 #include <utility>
 
 #include "window_base.h"
@@ -38,9 +39,12 @@ public:
 	 * @param iwidth window width.
 	 * @param iheight window height.
 	 * @param ndone_text text for the "Done" button.
+	 * @param rtl_session whether the owning name input session is RTL.
+	 * @param nspace_text text for the "Space" button.
 	 */
 	Window_Keyboard(int ix, int iy, int iwidth = 320, int iheight = 80,
-			const char* ndone_text = DONE, bool rtl_session = false);
+			std::string ndone_text = DONE, bool rtl_session = false,
+			std::string nspace_text = SPACE);
 
 	enum Mode {
 		Hiragana,
@@ -96,6 +100,7 @@ protected:
 	static const int min_width = 2;
 
 	std::string done_text;
+	std::string space_text;
 	int row_spacing;
 	int col_spacing;
 	Mode mode;

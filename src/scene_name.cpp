@@ -25,6 +25,10 @@
 #include "player.h"
 #include "output.h"
 #include "translation.h"
+#include "filefinder.h"
+#include "options.h"
+#include <lcf/inireader.h>
+#include <lcf/reader_util.h>
 
 Scene_Name_WindowGeometry GetSceneNameWindowGeometry(bool rtl_session,
 		int menu_offset_x, int menu_offset_y) {
@@ -65,6 +69,47 @@ Scene_Name_KeyboardPages BuildSceneNameKeyboardPages(bool arabic_session, int ch
 	return {std::move(charset_pages), charset};
 }
 
+Scene_NameKeyboardLabels ResolveSceneNameKeyboardLabels(bool rtl_session,
+		std::string normal_done_text, std::string_view encoding,
+		const lcf::INIReader* ini) {
+	Scene_NameKeyboardLabels labels{
+		"SPACE",
+		rtl_session ? "صافي" : std::move(normal_done_text)
+	};
+
+	if (rtl_session) {
+		labels.space = "مسافة";
+	}
+
+	if (!ini || ini->ParseError() != 0) {
+		return labels;
+	}
+
+	const auto read_override = [ini, encoding](const char* key) -> std::string {
+		if (!ini->HasValue("RPG_RT", key)) {
+			return {};
+		}
+
+		const std::string value(ini->GetString("RPG_RT", key, ""));
+		if (value.empty()) {
+			return {};
+		}
+
+		return lcf::ReaderUtil::Recode(value, std::string(encoding));
+	};
+
+	const std::string space = read_override("NameInputSpace");
+	const std::string done = read_override("NameInputDone");
+	if (!space.empty()) {
+		labels.space = space;
+	}
+	if (!done.empty()) {
+		labels.done = done;
+	}
+
+	return labels;
+}
+
 Scene_Name::Scene_Name(Game_Actor& actor, int charset, bool use_default_name)
 	: layout_index(charset), use_default_name(use_default_name), actor(actor)
 {
@@ -87,7 +132,7 @@ void Scene_Name::Start() {
 	name_window->Set(use_default_name ? ToString(actor.GetName()) : "");
 	name_window->Refresh();
 
-	const char* done = Window_Keyboard::DONE;
+	std::string done = Window_Keyboard::DONE;
 	std::vector<Window_Keyboard::Mode> charset_pages;
 	if (!arabic_session) {
 		// Japanese pages
@@ -120,8 +165,25 @@ void Scene_Name::Start() {
 	auto page_selection = BuildSceneNameKeyboardPages(arabic_session, layout_index, std::move(charset_pages));
 	layouts = std::move(page_selection.modes);
 	layout_index = page_selection.initial_index;
+
+	Scene_NameKeyboardLabels keyboard_labels{
+		Window_Keyboard::SPACE,
+		done
+	};
+	const std::string ini_file = FileFinder::Game().FindFile(INI_NAME);
+	auto ini_stream = FileFinder::Game().OpenInputStream(ini_file, std::ios_base::in);
+	if (ini_stream) {
+		lcf::INIReader ini(ini_stream);
+		keyboard_labels = ResolveSceneNameKeyboardLabels(arabic_session, done,
+				Player::encoding, &ini);
+	} else {
+		keyboard_labels = ResolveSceneNameKeyboardLabels(arabic_session, done,
+				Player::encoding, nullptr);
+	}
+
 	kbd_window.reset(new Window_Keyboard(geometry.keyboard_x, geometry.keyboard_y,
-			geometry.keyboard_width, geometry.keyboard_height, done, arabic_session));
+			geometry.keyboard_width, geometry.keyboard_height, keyboard_labels.done,
+			arabic_session, keyboard_labels.space));
 
 	auto next_index = layout_index + 1;
 	if (next_index >= static_cast<int>(layouts.size())) {

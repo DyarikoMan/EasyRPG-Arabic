@@ -18,6 +18,8 @@
 #ifndef EP_SCENE_NAME_H
 #define EP_SCENE_NAME_H
 
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include "scene.h"
@@ -45,6 +47,11 @@ struct Scene_Name_WindowGeometry {
 	int keyboard_height;
 };
 
+struct Scene_NameKeyboardLabels {
+	std::string space;
+	std::string done;
+};
+
 /**
  * Calculates name scene window geometry while keeping its existing dimensions
  * and vertical positions. RTL sessions mirror only the face/name horizontal
@@ -60,6 +67,17 @@ Scene_Name_WindowGeometry GetSceneNameWindowGeometry(bool rtl_session,
  */
 Scene_Name_KeyboardPages BuildSceneNameKeyboardPages(bool arabic_session, int charset,
 		std::vector<Window_Keyboard::Mode> charset_pages);
+
+namespace lcf { class INIReader; }
+
+/**
+ * Resolves Name Input button labels from [RPG_RT] in the game INI. Values are
+ * decoded using the game's configured code page; empty or missing values do
+ * not override the session defaults.
+ */
+Scene_NameKeyboardLabels ResolveSceneNameKeyboardLabels(bool rtl_session,
+		std::string normal_done_text, std::string_view encoding,
+		const lcf::INIReader* ini);
 
 /**
  * Scene_Item class.
