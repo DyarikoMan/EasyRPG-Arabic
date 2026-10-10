@@ -30,10 +30,24 @@
 #include <cstdint>
 #include <optional>
 
+namespace lcf { class INIReader; }
+
 /**
  * Player namespace.
  */
 namespace Player {
+	/** Project-specific opt-in gameplay extensions read from RPG_RT.ini. */
+	struct ProjectSettings {
+		bool eight_direction_movement = false;
+		bool pixel_movement = false;
+	};
+
+	/** Runtime settings for the currently loaded project. */
+	extern ProjectSettings project_settings;
+
+	/** Parse project-specific settings from the existing RPG_RT.ini reader. */
+	ProjectSettings ParseProjectSettings(const lcf::INIReader& ini);
+
 	/** Bitmask for type of emulated engine */
 	enum EngineType {
 		EngineNone = 0,
