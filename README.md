@@ -18,13 +18,12 @@ and gettext PO files.
 
 ## Download
 
-Get EasyRPG-Arabic **v0.1** from the
-[GitHub Releases page](https://github.com/DyarikoMan/EasyRPG-Arabic/releases/tag/v0.1-arabic).
-This release is experimental and should be considered a pre-release.
-
-- **EasyRPG-Arabic-Windows-x64.zip** — recommended download for most users.
-- **Player.exe** — standalone Windows x64 executable.
-- **Arabic-Translation-Toolkit.zip** — tools for managing Arabic text in RPG Maker projects.
+Get **EasyRPG-Arabic v0.2** from the
+[v0.2 prerelease page](https://github.com/DyarikoMan/EasyRPG-Arabic/releases/tag/v0.2-arabic).
+To prepare an Arabic RPG Maker 2003 installation, download
+[EasyRPG-Arabic-Setup.exe](https://github.com/DyarikoMan/EasyRPG-Arabic/releases/download/v0.2-arabic/EasyRPG-Arabic-Setup.exe).
+The public Setup requires you to provide a supported official Maniacs package;
+it validates the package and does not redistribute Maniacs.
 
 ## Quick start
 
