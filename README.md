@@ -89,9 +89,31 @@ defaults for Modern Standard Arabic or another Arabic dialect.
 
 ## Arabic in the Maniacs editor
 
-An optional Windows patch improves Arabic rendering in the Maniacs editor. See
-the [Maniacs Arabic Editor guide](tools/maniacs-arabic-editor/README.md) for
-installation and current support.
+Install RPG Maker 2003 from Steam, then run EasyRPG-Arabic Setup. It leaves the
+Steam installation untouched and creates the managed Arabic environment at
+`<RPG Maker 2003>\Arabic`. Open its Maniacs editor and create a new project to
+get the Arabic-ready setup automatically:
+
+```text
+Steam RPG Maker 2003 → EasyRPG-Arabic Setup → RPG Maker 2003\Arabic
+  → Arabic Maniacs editor → New Project → Arabic-ready project
+```
+
+New projects use Windows-1256 (CP1256), include the EasyRPG `Player.exe` used by
+the yellow Play/Test Play command, and start with a Moroccan Darija PO base
+covering 143 canonical RPG Maker terms. They also include the BOU33OU Arabic
+PixelSmall font at size 16 and default to 426×240. EasyRPG-Arabic provides
+right-to-left layout, BiDi handling, and Arabic shaping; use the LcfTrans PO
+workflow to update translations as project text changes. See the
+[Arabic text toolkit guide](arabic/README.md) and
+[Maniacs Arabic Editor guide](tools/maniacs-arabic-editor/README.md).
+
+The public installer does not redistribute Maniacs: users provide a supported
+official package, which Setup validates. An embedded-Maniacs build is for local
+internal use only and must not be distributed publicly.
+
+Future gameplay-changing EasyRPG features should remain opt-in per project
+through `RPG_RT.ini`, with vanilla behavior as the default.
 
 ## Status and limitations
 
