@@ -325,19 +325,37 @@ void Game_Player::UpdateNextMovementAction() {
 	}
 
 	int move_dir = -1;
-	switch (Input::dir4) {
-		case 2:
+	const bool use_dir8 = Player::project_settings.eight_direction_movement;
+	const int input_direction = use_dir8 ? Input::dir8 : Input::dir4;
+	switch (input_direction) {
+		case Input::Direction::DOWN:
 			move_dir = Down;
 			break;
-		case 4:
+		case Input::Direction::LEFT:
 			move_dir = Left;
 			break;
-		case 6:
+		case Input::Direction::RIGHT:
 			move_dir = Right;
 			break;
-		case 8:
+		case Input::Direction::UP:
 			move_dir = Up;
 			break;
+	}
+	if (use_dir8) {
+		switch (input_direction) {
+			case Input::Direction::DOWNLEFT:
+				move_dir = DownLeft;
+				break;
+			case Input::Direction::DOWNRIGHT:
+				move_dir = DownRight;
+				break;
+			case Input::Direction::UPLEFT:
+				move_dir = UpLeft;
+				break;
+			case Input::Direction::UPRIGHT:
+				move_dir = UpRight;
+				break;
+		}
 	}
 	if (move_dir >= 0) {
 		SetThrough((Player::debug_flag && Input::IsPressed(Input::DEBUG_THROUGH)) || data()->move_route_through);
