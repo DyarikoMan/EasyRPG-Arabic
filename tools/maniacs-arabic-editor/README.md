@@ -21,3 +21,11 @@ the patch files.
 To uninstall, run `uninstall.bat` and select the same folder. It restores
 backed-up files or removes files the patch added; backups remain under
 `.ManiacsArabicEditor\backups`.
+
+The installer also adds `ArabicSupport`, containing the existing CP1256 PO
+updater, canonical system terms, the Arabic PixelSmall font, and bundled
+LcfTrans 1.1. On a newly created project, Maniacs initializes `Language\ar`,
+copies the font if no project font exists, and sets a 426x240 window resolution
+after creating the project data. Existing projects are not automatically
+updated, and an existing custom font is never overwritten. LcfTrans and liblcf
+MIT notices and the font's OFL 1.1 license are included with the support files.

@@ -22,7 +22,8 @@ public sealed record SetupModuleContext(
 	string StagingDirectory,
 	string FinalDirectory,
 	string? ManiacsPackageDirectory = null,
-	bool ManiacsLicenseAccepted = false);
+	bool ManiacsLicenseAccepted = false,
+	Action<string>? ReportStage = null);
 
 public sealed record ModuleOwnedFile(string RelativePath, string Sha256);
 

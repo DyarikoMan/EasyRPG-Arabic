@@ -1,22 +1,40 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Xml;
 
 namespace EasyRpgArabic.Setup.Core.Modules;
 
 public sealed class ArabicEditorSetupModule : ISetupModule
 {
-	private static readonly string[] PayloadFiles = ["EasyCmdTos.dll", "EasyRpgCommands.dll", "0Harmony.dll"];
+	private static readonly string[] PluginPayloadFiles = ["Plugin/EasyCmdTos.dll", "Plugin/EasyRpgCommands.dll", "Plugin/0Harmony.dll"];
+	private static readonly string[] SupportPayloadFiles =
+	[
+		"ArabicSupport/tools/update-arabic.ps1",
+		"ArabicSupport/tools/lcftrans.exe",
+		"ArabicSupport/tools/lcftrans-source.json",
+		"ArabicSupport/terminology/canonical-terms.json",
+		"ArabicSupport/template/Language/ar/Meta.ini",
+		"ArabicSupport/template/Language/ar/Font/Font.ttf",
+		"ArabicSupport/template/Language/ar/Font/OFL.txt",
+		"ArabicSupport/template/Language/ar/Font/NOTICE.txt",
+		"ArabicSupport/template/Language/ar/Font/SOURCE.txt",
+		"ArabicSupport/licenses/LcfTrans-COPYING.txt",
+		"ArabicSupport/licenses/liblcf-COPYING.txt"
+	];
+	private static readonly string[] PayloadFiles = PluginPayloadFiles.Concat(SupportPayloadFiles).ToArray();
+	private const string ExpectedLcfTransSha256 = "FF8C5C26CF4CA1FF3A837B2C67C1E458370F2340BFB57F4F7D652417AD239379";
+	private const string ExpectedArabicPixelSmallFontSha256 = "68B412A4D8443FE677DD37412BB44D117CADE607572B2CC9689177DA3934952F";
 	private readonly Func<Stream> _openPackage;
 
 	public SetupModuleDescriptor Descriptor { get; } = new(
 		"arabic-editor",
 		"Arabic Editor support",
-		"1.0.0",
+		"1.1.0",
 		["maniacs-english"],
 		["Maniacs English installation with rpg2003.exe, cmdcs.dll, cmdTos.dll, and Plugin folder"],
 		ModuleReadiness.Available,
-		"The existing Arabic Editor package is ready; it requires the Maniacs English module.");
+		"Installs the Arabic Editor patch and bundled CP1256 PO updater, canonical terms, LcfTrans, and Arabic PixelSmall font; requires Maniacs English.");
 
 	public ArabicEditorSetupModule(Func<Stream> openPackage)
 	{
@@ -27,13 +45,12 @@ public sealed class ArabicEditorSetupModule : ISetupModule
 	{
 		ValidateHost(context.StagingDirectory);
 		var payload = ReadPayload();
-		var pluginDirectory = Path.Combine(context.StagingDirectory, "Plugin");
-		foreach (var fileName in PayloadFiles)
+		foreach (var relativePath in PayloadFiles)
 		{
-			var target = Path.Combine(pluginDirectory, fileName);
+			var target = ResolveOwnedPath(context.StagingDirectory, relativePath);
 			if (File.Exists(target))
 			{
-				throw new IOException($"Refusing to overwrite an existing plugin file: {target}");
+				throw new IOException($"Refusing to overwrite an existing Arabic Editor payload file: {relativePath}");
 			}
 		}
 
@@ -41,19 +58,21 @@ public sealed class ArabicEditorSetupModule : ISetupModule
 		try
 		{
 			var owned = new List<ModuleOwnedFile>();
-			foreach (var fileName in PayloadFiles)
+			foreach (var relativePath in PayloadFiles)
 			{
 				cancellationToken.ThrowIfCancellationRequested();
-				var bytes = payload[fileName];
-				var target = Path.Combine(pluginDirectory, fileName);
+				var bytes = payload[relativePath];
+				var target = ResolveOwnedPath(context.StagingDirectory, relativePath);
+				Directory.CreateDirectory(Path.GetDirectoryName(target)!);
 				await using (var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024, useAsync: true))
 				{
 					created.Add(target);
 					await output.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
 					await output.FlushAsync(cancellationToken).ConfigureAwait(false);
 				}
-				owned.Add(new ModuleOwnedFile($"Plugin/{fileName}", Convert.ToHexString(SHA256.HashData(bytes))));
+				owned.Add(new ModuleOwnedFile(relativePath, Convert.ToHexString(SHA256.HashData(bytes))));
 			}
+			context.ReportStage?.Invoke("Configuring Arabic support...");
 			owned.AddRange(await ConfigureTextEncodingAsync(context, created, cancellationToken).ConfigureAwait(false));
 			return new ModuleApplyResult(owned);
 		}
@@ -79,18 +98,18 @@ public sealed class ArabicEditorSetupModule : ISetupModule
 			var expectedOwnedCount = PayloadFiles.Length + 1 + (hasConfigBackup ? 1 : 0);
 			if (result.OwnedFiles.Count != expectedOwnedCount)
 			{
-				return Task.FromResult(ModuleVerificationResult.Failure("The module ownership record does not match its plugin files and encoding configuration."));
+				return Task.FromResult(ModuleVerificationResult.Failure("The module ownership record does not match its plugin/support files and encoding configuration."));
 			}
-			foreach (var fileName in PayloadFiles)
+			foreach (var relativePath in PayloadFiles)
 			{
-				var path = Path.Combine(context.StagingDirectory, "Plugin", fileName);
-				if (!File.Exists(path)) { return Task.FromResult(ModuleVerificationResult.Failure($"Plugin/{fileName} is missing.")); }
-				var actual = Convert.ToHexString(SHA256.HashData(expected[fileName]));
-				var recorded = result.OwnedFiles.SingleOrDefault(file => string.Equals(file.RelativePath, $"Plugin/{fileName}", StringComparison.OrdinalIgnoreCase));
+				var path = ResolveOwnedPath(context.StagingDirectory, relativePath);
+				if (!File.Exists(path)) { return Task.FromResult(ModuleVerificationResult.Failure($"{relativePath} is missing.")); }
+				var actual = Convert.ToHexString(SHA256.HashData(expected[relativePath]));
+				var recorded = result.OwnedFiles.SingleOrDefault(file => string.Equals(file.RelativePath, relativePath, StringComparison.OrdinalIgnoreCase));
 				if (recorded is null || !string.Equals(actual, recorded.Sha256, StringComparison.OrdinalIgnoreCase) ||
 					!string.Equals(actual, ComputeFileHash(path), StringComparison.OrdinalIgnoreCase))
 				{
-					return Task.FromResult(ModuleVerificationResult.Failure($"Plugin/{fileName} failed its package hash check."));
+					return Task.FromResult(ModuleVerificationResult.Failure($"{relativePath} failed its package hash check."));
 				}
 			}
 			var configPath = ResolveOwnedPath(context.StagingDirectory, ManiacsTextEncodingConfig.RelativePath);
@@ -266,19 +285,46 @@ public sealed class ArabicEditorSetupModule : ISetupModule
 		using var stream = _openPackage();
 		using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: false);
 		var payload = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
-		foreach (var fileName in PayloadFiles)
+		foreach (var relativePath in PayloadFiles)
 		{
-			var expectedEntryName = $"Plugin/{fileName}";
+			var expectedEntryName = relativePath;
 			var entry = archive.Entries.FirstOrDefault(candidate =>
 				string.Equals(candidate.FullName.Replace('\\', '/'), expectedEntryName, StringComparison.OrdinalIgnoreCase))
-				?? throw new InvalidDataException($"The Arabic Editor release ZIP is missing Plugin/{fileName}.");
+				?? throw new InvalidDataException($"The Arabic Editor release ZIP is missing {expectedEntryName}.");
 			using var entryStream = entry.Open();
 			using var memory = new MemoryStream();
 			entryStream.CopyTo(memory);
-			if (memory.Length == 0) { throw new InvalidDataException($"The Arabic Editor release file is empty: Plugin/{fileName}."); }
-			payload.Add(fileName, memory.ToArray());
+			if (memory.Length == 0) { throw new InvalidDataException($"The Arabic Editor release file is empty: {relativePath}."); }
+			payload.Add(relativePath, memory.ToArray());
 		}
+		ValidateArabicSupportPayload(payload);
 		return payload;
+	}
+
+	private static void ValidateArabicSupportPayload(IReadOnlyDictionary<string, byte[]> payload)
+	{
+		var lcfTrans = payload["ArabicSupport/tools/lcftrans.exe"];
+		if (!string.Equals(Convert.ToHexString(SHA256.HashData(lcfTrans)), ExpectedLcfTransSha256, StringComparison.OrdinalIgnoreCase))
+		{
+			throw new InvalidDataException("The bundled LcfTrans executable does not match the validated Windows x86 build hash.");
+		}
+		var font = payload["ArabicSupport/template/Language/ar/Font/Font.ttf"];
+		if (!string.Equals(Convert.ToHexString(SHA256.HashData(font)), ExpectedArabicPixelSmallFontSha256, StringComparison.OrdinalIgnoreCase))
+		{
+			throw new InvalidDataException("The bundled Arabic font does not match the historical Arabic PixelSmall release.");
+		}
+		using var metadata = JsonDocument.Parse(payload["ArabicSupport/tools/lcftrans-source.json"]);
+		if (!string.Equals(metadata.RootElement.GetProperty("version").GetString(), "1.1", StringComparison.Ordinal) ||
+			!string.Equals(metadata.RootElement.GetProperty("sha256").GetString(), ExpectedLcfTransSha256, StringComparison.OrdinalIgnoreCase))
+		{
+			throw new InvalidDataException("The bundled LcfTrans provenance metadata does not match the validated executable.");
+		}
+		using var canonical = JsonDocument.Parse(payload["ArabicSupport/terminology/canonical-terms.json"]);
+		var canonicalCount = canonical.RootElement.EnumerateObject().Count(property => property.Name.StartsWith("terms.", StringComparison.Ordinal));
+		if (canonicalCount != 143)
+		{
+			throw new InvalidDataException($"The bundled canonical terminology has {canonicalCount} terms; expected 143.");
+		}
 	}
 
 	private static void ValidateHost(string root)

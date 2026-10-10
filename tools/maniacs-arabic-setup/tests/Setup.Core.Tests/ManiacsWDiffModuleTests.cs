@@ -19,7 +19,7 @@ public sealed class ManiacsWDiffModuleTests
 
 		var root = Path.Combine(Path.GetTempPath(), "easyrpg-maniacs-wdiff-reference-" + Guid.NewGuid().ToString("N"));
 		var source = Path.Combine(root, "vanilla-source");
-		var destination = Path.Combine(root, "managed", "Arabic Maniacs");
+		var destination = Path.Combine(source, "Arabic");
 		try
 		{
 			CreateDisposableVanillaSource(referenceSource, source);
@@ -63,7 +63,11 @@ public sealed class ManiacsWDiffModuleTests
 				.Select(path => Path.GetRelativePath(destination, path).Replace('\\', '/'))
 				.OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
 			Assert.Equal(expectedOwnedPaths, actualManagedPaths);
-			Assert.Equal(sourceSnapshot.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase), SnapshotFiles(source).OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase));
+			var sourceAfterInstall = SnapshotFiles(source)
+				.Where(pair => !pair.Key.StartsWith("Arabic/", StringComparison.OrdinalIgnoreCase));
+			Assert.Equal(sourceSnapshot.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase),
+				sourceAfterInstall.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase));
+			Assert.Empty(Directory.EnumerateDirectories(source, ".EasyRPG-Arabic.staging-*", SearchOption.TopDirectoryOnly));
 			Assert.Equal("keep source only", await File.ReadAllTextAsync(Path.Combine(source, "old-maniacs-installation", "sentinel.txt")));
 			Assert.Equal(new[] { "maniacs", "maniacs-english", "arabic-editor", "easyrpg-arabic" }, result.State.Modules.Select(module => module.Id));
 			Assert.All(result.State.Modules.Where(module => module.Id is "maniacs" or "maniacs-english"),

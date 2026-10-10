@@ -8,10 +8,26 @@ param (
 	[string]$LcfTransPath,
 
 	[Parameter()]
+	[string]$RuntimeLogPath,
+
+	[Parameter()]
+	[switch]$InitializeNewProject,
+
+	[Parameter()]
 	[switch]$ForceCanonical
 )
 
 $ErrorActionPreference = 'Stop'
+$runtimeTranscriptStarted = $false
+if (-not [string]::IsNullOrWhiteSpace($RuntimeLogPath)) {
+	$runtimeLogFullPath = [System.IO.Path]::GetFullPath($RuntimeLogPath)
+	$runtimeLogDirectory = [System.IO.Path]::GetDirectoryName($runtimeLogFullPath)
+	if (-not [string]::IsNullOrWhiteSpace($runtimeLogDirectory)) {
+		New-Item -ItemType Directory -Force -Path $runtimeLogDirectory | Out-Null
+	}
+	Start-Transcript -Path $runtimeLogFullPath -Append | Out-Null
+	$runtimeTranscriptStarted = $true
+}
 
 function Resolve-LcfTransExecutable {
 	param (
@@ -194,7 +210,17 @@ function Get-PoFileHashes {
 	if (Test-Path -LiteralPath $Directory -PathType Container) {
 		$poFiles = Get-ChildItem -LiteralPath $Directory -Filter '*.po' -File -Recurse -ErrorAction SilentlyContinue
 		foreach ($poFile in $poFiles) {
-			$hashes[$poFile.FullName] = (Get-FileHash -LiteralPath $poFile.FullName -Algorithm SHA256).Hash
+			$stream = [System.IO.File]::OpenRead($poFile.FullName)
+			try {
+				$sha256 = [System.Security.Cryptography.SHA256]::Create()
+				try {
+					$hashes[$poFile.FullName] = [System.BitConverter]::ToString($sha256.ComputeHash($stream)).Replace('-', '')
+				} finally {
+					$sha256.Dispose()
+				}
+			} finally {
+				$stream.Dispose()
+			}
 		}
 	}
 	return $hashes
@@ -324,6 +350,83 @@ function Get-UntranslatedPoEntryCount {
 	return $emptyCount
 }
 
+function Set-NewProjectResolution {
+	param ([Parameter(Mandatory = $true)][string]$Directory)
+
+	$iniPath = Join-Path $Directory 'RPG_RT.ini'
+	if (-not (Test-Path -LiteralPath $iniPath -PathType Leaf)) {
+		[System.IO.File]::WriteAllText($iniPath, "[RPG_RT]`r`nWinW=426`r`nWinH=240`r`n", [System.Text.Encoding]::ASCII)
+		return
+	}
+
+	$bytes = [System.IO.File]::ReadAllBytes($iniPath)
+	$prefixLength = 0
+	$encoding = [System.Text.Encoding]::GetEncoding(28591)
+	if ($bytes.Length -ge 4 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE -and $bytes[2] -eq 0x00 -and $bytes[3] -eq 0x00) {
+		$prefixLength = 4
+		$encoding = [System.Text.UTF32Encoding]::new($false, $false)
+	} elseif ($bytes.Length -ge 4 -and $bytes[0] -eq 0x00 -and $bytes[1] -eq 0x00 -and $bytes[2] -eq 0xFE -and $bytes[3] -eq 0xFF) {
+		$prefixLength = 4
+		$encoding = [System.Text.UTF32Encoding]::new($true, $false)
+	} elseif ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+		$prefixLength = 3
+		$encoding = [System.Text.UTF8Encoding]::new($false)
+	} elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
+		$prefixLength = 2
+		$encoding = [System.Text.UnicodeEncoding]::new($false, $false)
+	} elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF) {
+		$prefixLength = 2
+		$encoding = [System.Text.UnicodeEncoding]::new($true, $false)
+	}
+
+	$content = $encoding.GetString($bytes, $prefixLength, $bytes.Length - $prefixLength)
+	$newlineMatch = [regex]::Match($content, "`r`n|`n|`r")
+	$newline = if ($newlineMatch.Success) { $newlineMatch.Value } else { "`r`n" }
+	$hadFinalNewline = [regex]::IsMatch($content, '(?:\r\n|\n|\r)$')
+	$lines = [System.Collections.Generic.List[string]]::new()
+	foreach ($line in [regex]::Split($content, "`r`n|`n|`r")) { $lines.Add($line) }
+	if ($hadFinalNewline -and $lines.Count -gt 0 -and $lines[$lines.Count - 1].Length -eq 0) {
+		$lines.RemoveAt($lines.Count - 1)
+	}
+
+	$headerPattern = '^\s*\[[^\]]+\]\s*$'
+	$targetSection = -1
+	for ($index = 0; $index -lt $lines.Count; $index++) {
+		if ($lines[$index] -match '^\s*\[RPG_RT\]\s*$') {
+			$targetSection = $index
+			break
+		}
+	}
+
+	if ($targetSection -lt 0) {
+		if ($lines.Count -gt 0 -and $lines[$lines.Count - 1].Length -gt 0) { $lines.Add('') }
+		$lines.Add('[RPG_RT]')
+		$lines.Add('WinW=426')
+		$lines.Add('WinH=240')
+		$hadFinalNewline = $true
+	} else {
+		$sectionEnd = $targetSection + 1
+		while ($sectionEnd -lt $lines.Count -and $lines[$sectionEnd] -notmatch $headerPattern) { $sectionEnd++ }
+		$hasWidth = $false
+		$hasHeight = $false
+		for ($index = $targetSection + 1; $index -lt $sectionEnd; $index++) {
+			if ($lines[$index] -match '^\s*WinW\s*=') { $lines[$index] = 'WinW=426'; $hasWidth = $true }
+			elseif ($lines[$index] -match '^\s*WinH\s*=') { $lines[$index] = 'WinH=240'; $hasHeight = $true }
+		}
+		$insertAt = $sectionEnd
+		if (-not $hasWidth) { $lines.Insert($insertAt, 'WinW=426'); $insertAt++ }
+		if (-not $hasHeight) { $lines.Insert($insertAt, 'WinH=240') }
+	}
+
+	$updatedContent = [string]::Join($newline, $lines)
+	if ($hadFinalNewline) { $updatedContent += $newline }
+	$encoded = $encoding.GetBytes($updatedContent)
+	$output = [byte[]]::new($prefixLength + $encoded.Length)
+	if ($prefixLength -gt 0) { [Array]::Copy($bytes, 0, $output, 0, $prefixLength) }
+	[Array]::Copy($encoded, 0, $output, $prefixLength, $encoded.Length)
+	[System.IO.File]::WriteAllBytes($iniPath, $output)
+}
+
 $toolsDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $arabicDirectory = Split-Path -Parent $toolsDirectory
 $templateLanguageDirectory = Join-Path $arabicDirectory 'template\Language\ar'
@@ -346,6 +449,11 @@ if (-not (Test-Path -LiteralPath $canonicalTermsPath -PathType Leaf)) {
 $null = New-Item -ItemType Directory -Force -Path (Join-Path $languageDirectory 'Font')
 $filesUpdated = [System.Collections.Generic.List[string]]::new()
 $warnings = [System.Collections.Generic.List[string]]::new()
+
+if ($InitializeNewProject) {
+	Set-NewProjectResolution -Directory $gameDirectory
+	Write-Host 'Initialized new project resolution to 426x240.'
+}
 
 Get-ChildItem -LiteralPath $templateLanguageDirectory -File -Recurse | ForEach-Object {
 	$relativePath = $_.FullName.Substring($templateLanguageDirectory.TrimEnd('\', '/').Length).TrimStart([char[]]@('\', '/'))
@@ -379,7 +487,7 @@ if ($lcfTransExecutable) {
 	Write-Host "Updating Arabic PO files with LcfTrans from '$languageDirectory'..." -ForegroundColor Cyan
 	Push-Location -LiteralPath $languageDirectory
 	try {
-		& $lcfTransExecutable -u $gameDirectory -e 1252
+		& $lcfTransExecutable -u $gameDirectory -e 1256
 		if ($LASTEXITCODE -ne 0) {
 			throw "LcfTrans failed with exit code $LASTEXITCODE."
 		}
@@ -473,5 +581,8 @@ if ($warnings.Count -gt 0) {
 
 if (-not $lcfTransRan -and -not (Test-Path -LiteralPath $databasePoPath -PathType Leaf)) {
 	throw "Cannot update translations without LcfTrans or an existing RPG_RT.ldb.po. $($warnings[0])"
+}
+if ($runtimeTranscriptStarted) {
+	Stop-Transcript | Out-Null
 }
 

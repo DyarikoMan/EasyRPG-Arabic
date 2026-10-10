@@ -1,6 +1,6 @@
 # EasyRPG-Arabic translation workflow
 
-This toolkit prepares an Arabic translation folder for an RPG Maker 2000/2003 game. It uses LcfTrans to create or update the UTF-8 PO files, then applies the reusable Arabic system terms from `terminology/canonical-terms.json` to matching database contexts.
+This toolkit prepares an Arabic translation folder for an RPG Maker 2000/2003 game. It uses LcfTrans to create or update UTF-8 PO files with Windows-1256 project data, then applies the reusable Arabic system terms from `terminology/canonical-terms.json` to matching database contexts. The official Windows LcfTrans 1.1 binary and its MIT notices are included under `tools/` and `licenses/`.
 
 ## Translate a game
 
@@ -13,7 +13,7 @@ This toolkit prepares an Arabic translation folder for an RPG Maker 2000/2003 ga
      -GamePath "C:\Games\MyRPG"
    ```
 
-   If LcfTrans is not in `PATH` or `arabic/tools/lcftrans.exe`, provide its location:
+   The included Windows `arabic/tools/lcftrans.exe` is used automatically. To use another LcfTrans build, provide its location:
 
    ```powershell
    .\arabic\tools\update-arabic.ps1 `
@@ -21,10 +21,10 @@ This toolkit prepares an Arabic translation folder for an RPG Maker 2000/2003 ga
      -LcfTransPath "C:\Tools\LcfTrans\lcftrans.exe"
    ```
 
-   `-LcfTransPath` can be either the executable file or the folder containing `lcftrans.exe`. The script does not download LcfTrans. Get it from an official EasyRPG Tools distribution and review its license before redistributing it.
+   `-LcfTransPath` can be either the executable file or the folder containing `lcftrans.exe`. The bundled binary is from EasyRPG Tools continuous build 369 (LcfTrans 1.1); its SHA-256 and the MIT notices for LcfTrans and liblcf are recorded in the repository.
 
 4. Edit the generated UTF-8 PO files in `C:\Games\MyRPG\Language\ar\`. Put Arabic translations in `msgstr`; keep `msgctxt`, `msgid`, comments, and PO syntax intact.
-5. If the old RPG Maker editor corrupts Arabic text, do not type Arabic directly into its fields. Leave placeholder or English source text there and translate it in the PO files instead.
+5. The Maniacs Arabic Editor patch supports tested `TOverEdit` fields such as Actor Name/Nickname and Item Name/Description. For other editor controls that have not been verified, leave placeholder or English source text and translate it in the PO files instead.
 6. Save the PO files.
 7. Run `EasyRPG-Arabic Player.exe` from the game directory. Arabic is auto-selected when the Arabic translation is available.
 
@@ -48,7 +48,7 @@ Do not add an accidental final `\n` to `msgstr` if the source entry does not end
 
 ## Arabic support
 
-- `Font.ttf` is included at `Language\ar\Font\Font.ttf`; the updater copies the template font and `Meta.ini` only when those files are missing, so it does not overwrite a game's existing versions.
+- `Font.ttf` is the historical Arabic PixelSmall font created by BOU33OU. This unchanged repository copy is distributed under SIL OFL 1.1; see the font folder's `NOTICE.txt`, `OFL.txt`, and `SOURCE.txt`. New-project setup copies it only when the project does not already have a font, preserving custom fonts.
 - Arabic is selected automatically. When Arabic is the only available translation, the language selector is hidden.
 - The player handles mixed Arabic, Latin text, and numbers, including BiDi ordering and shaping.
 - The stock UI uses RTL layout automatically for Arabic.

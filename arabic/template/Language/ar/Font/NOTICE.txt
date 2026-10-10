@@ -1,17 +1,21 @@
-EasyRPG-Arabic Arabic Pixel Font
+Arabic PixelSmall
 
-This Arabic pixel font was created by bou33ou.
+Created by bou33ou.
+Copyright (c) 2025 BOU33OU.
 
-It was originally created for a Minecraft Arabic localization/resource-pack
-project and was later reused and adapted for EasyRPG-Arabic.
+The original creator and copyright holder licenses this unchanged repository
+copy under the SIL Open Font License, Version 1.1. The Modrinth listing's
+license applies to that release; the rights holder may separately license this
+original work. See OFL.txt for the license applying to this repository copy.
 
 Original project:
 https://modrinth.com/resourcepack/arabic-font
 
-Copyright © 2026 bou33ou.
+Historical TTF SHA-256:
+68B412A4D8443FE677DD37412BB44D117CADE607572B2CC9689177DA3934952F
 
-No separate redistribution or modification license has been specified for
-this font yet.
-
-For permission to redistribute or modify the font separately from
-EasyRPG-Arabic, please contact the project maintainer.
+A structural review of the TTF found 368 glyphs, 365 mapped codepoints, no
+composite glyphs, no embedded font payloads, and no third-party font notices
+or references. The font metadata identifies BOU33OU as copyright holder and
+designer and PixelForge as the creation tool. No third-party font data was
+identified in this file. Glyph outlines are unchanged.

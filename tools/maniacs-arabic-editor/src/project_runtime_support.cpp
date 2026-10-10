@@ -3,6 +3,7 @@
 #include <MinHook.h>
 
 #include <array>
+#include <atomic>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -14,6 +15,9 @@ namespace {
 
 using CopyFileAFunction = BOOL(WINAPI*)(LPCSTR, LPCSTR, BOOL);
 using CopyFileWFunction = BOOL(WINAPI*)(LPCWSTR, LPCWSTR, BOOL);
+using CreateFileAFunction = HANDLE(WINAPI*)(LPCSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
+using CreateFileWFunction = HANDLE(WINAPI*)(LPCWSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
+using CloseHandleFunction = BOOL(WINAPI*)(HANDLE);
 using CreateProcessAFunction = BOOL(WINAPI*)(
 	LPCSTR, LPSTR, LPSECURITY_ATTRIBUTES, LPSECURITY_ATTRIBUTES, BOOL, DWORD, LPVOID,
 	LPCSTR, LPSTARTUPINFOA, LPPROCESS_INFORMATION);
@@ -23,6 +27,9 @@ using CreateProcessWFunction = BOOL(WINAPI*)(
 
 CopyFileAFunction original_copy_file_a = nullptr;
 CopyFileWFunction original_copy_file_w = nullptr;
+CreateFileAFunction original_create_file_a = nullptr;
+CreateFileWFunction original_create_file_w = nullptr;
+CloseHandleFunction original_close_handle = nullptr;
 CreateProcessAFunction original_create_process_a = nullptr;
 CreateProcessWFunction original_create_process_w = nullptr;
 
@@ -32,6 +39,13 @@ thread_local unsigned int intercepted_api_depth = 0;
 
 std::wstring managed_runtime_path;
 std::wstring managed_player_path;
+std::wstring managed_database_template_path;
+std::mutex new_project_mutex;
+std::wstring candidate_project_directory;
+std::wstring ready_project_directory;
+std::wstring tracked_map_directory;
+std::atomic<HANDLE> tracked_map_read_handle{nullptr};
+bool candidate_updater_started = false;
 
 class InterceptionScope {
 public:
@@ -82,6 +96,16 @@ bool IsRpgRtPath(const wchar_t* path) {
 
 bool IsRpgRtPath(const char* path) {
 	return path != nullptr && EqualsAsciiInsensitive(LeafName(std::string_view(path)), "RPG_RT.exe");
+}
+
+template <typename Character>
+bool IsDatabaseTemplateSourcePath(const Character* path) {
+	return path != nullptr && EqualsAsciiInsensitive(LeafName(std::basic_string_view<Character>(path)), "RPG_RT.ldb.dat");
+}
+
+template <typename Character>
+bool IsProjectDatabasePath(const Character* path) {
+	return path != nullptr && EqualsAsciiInsensitive(LeafName(std::basic_string_view<Character>(path)), "RPG_RT.ldb");
 }
 
 std::wstring FullPath(const std::wstring& path) {
@@ -167,6 +191,175 @@ std::wstring ParentDirectory(const std::wstring& path) {
 bool FileExists(const std::wstring& path) {
 	const DWORD attributes = GetFileAttributesW(path.c_str());
 	return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+}
+
+bool IsDatabaseTemplatePath(const std::wstring& path) {
+	return !managed_database_template_path.empty() && SamePath(path, managed_database_template_path);
+}
+
+void RecordNewProjectRuntimeCopy(const std::wstring& runtime_path) {
+	const std::wstring directory = ParentDirectory(runtime_path);
+	if (directory.empty()) { return; }
+	std::lock_guard<std::mutex> lock(new_project_mutex);
+	candidate_project_directory = directory;
+	ready_project_directory.clear();
+	tracked_map_directory.clear();
+	tracked_map_read_handle.store(nullptr, std::memory_order_release);
+	candidate_updater_started = false;
+}
+
+void RecordNewProjectDatabaseCopy(const std::wstring& source, const std::wstring& destination) {
+	if (!IsDatabaseTemplatePath(source) || !EqualsAsciiInsensitive(LeafName(std::wstring_view(destination)), "RPG_RT.ldb")) {
+		return;
+	}
+	const std::wstring directory = ParentDirectory(destination);
+	if (directory.empty()) { return; }
+	std::lock_guard<std::mutex> lock(new_project_mutex);
+	if (!candidate_project_directory.empty() && SamePath(directory, candidate_project_directory)) {
+		ready_project_directory = directory;
+	}
+}
+
+bool IsCandidateMapRead(const std::wstring& path, DWORD desired_access, DWORD creation_disposition) {
+	if ((desired_access & GENERIC_READ) == 0 || creation_disposition != OPEN_EXISTING ||
+		!EqualsAsciiInsensitive(LeafName(std::wstring_view(path)), "Map0001.lmu") ||
+		tracked_map_read_handle.load(std::memory_order_acquire) != nullptr) {
+		return false;
+	}
+	const std::wstring directory = ParentDirectory(path);
+	if (directory.empty()) { return false; }
+	std::lock_guard<std::mutex> lock(new_project_mutex);
+	return !candidate_updater_started && !ready_project_directory.empty() && SamePath(directory, ready_project_directory);
+}
+
+std::wstring QuoteWindowsArgument(std::wstring_view argument) {
+	std::wstring quoted(1, L'"');
+	size_t backslashes = 0;
+	for (wchar_t character : argument) {
+		if (character == L'\\') {
+			++backslashes;
+			continue;
+		}
+		if (character == L'"') {
+			quoted.append(backslashes * 2 + 1, L'\\');
+			quoted.push_back(L'"');
+			backslashes = 0;
+			continue;
+		}
+		quoted.append(backslashes, L'\\');
+		backslashes = 0;
+		quoted.push_back(character);
+	}
+	quoted.append(backslashes * 2, L'\\');
+	quoted.push_back(L'"');
+	return quoted;
+}
+
+bool WriteRuntimeLogLine(const std::wstring& path, const std::wstring& line) {
+	const HANDLE file = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
+		nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+	if (file == INVALID_HANDLE_VALUE) { return false; }
+	const int byte_count = WideCharToMultiByte(CP_UTF8, 0, line.data(), static_cast<int>(line.size()), nullptr, 0, nullptr, nullptr);
+	if (byte_count <= 0) { (void)original_close_handle(file); return false; }
+	std::string utf8(static_cast<size_t>(byte_count), '\0');
+	if (WideCharToMultiByte(CP_UTF8, 0, line.data(), static_cast<int>(line.size()), utf8.data(), byte_count, nullptr, nullptr) != byte_count) {
+		(void)original_close_handle(file);
+		return false;
+	}
+	DWORD written = 0;
+	const BOOL succeeded = WriteFile(file, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr);
+	(void)original_close_handle(file);
+	return succeeded && written == utf8.size();
+}
+
+std::wstring GetPowerShellExecutable() {
+	std::vector<wchar_t> windows_directory(512);
+	for (;;) {
+		const UINT length = GetWindowsDirectoryW(windows_directory.data(), static_cast<UINT>(windows_directory.size()));
+		if (length == 0) { break; }
+		if (length < windows_directory.size()) {
+			windows_directory.resize(length);
+			const std::wstring candidate = JoinPath(JoinPath(std::wstring(windows_directory.data(), length), L"System32\\WindowsPowerShell\\v1.0"), L"powershell.exe");
+			if (FileExists(candidate)) { return candidate; }
+			break;
+		}
+		windows_directory.resize(static_cast<size_t>(length) + 1);
+	}
+	std::vector<wchar_t> search_result(32768);
+	const DWORD length = SearchPathW(nullptr, L"powershell.exe", nullptr, static_cast<DWORD>(search_result.size()), search_result.data(), nullptr);
+	if (length == 0 || length >= search_result.size()) { return {}; }
+	search_result.resize(length);
+	return std::wstring(search_result.begin(), search_result.end());
+}
+
+void LaunchArabicProjectUpdater(const std::wstring& project_directory) {
+	if (original_create_process_w == nullptr || original_close_handle == nullptr || project_directory.empty()) { return; }
+	InterceptionScope scope;
+	const std::wstring support_directory = ParentDirectory(managed_player_path);
+	const std::wstring script_path = JoinPath(JoinPath(support_directory, L"ArabicSupport\\tools"), L"update-arabic.ps1");
+	const std::wstring lcftrans_path = JoinPath(JoinPath(support_directory, L"ArabicSupport\\tools"), L"lcftrans.exe");
+	const std::wstring language_directory = JoinPath(JoinPath(project_directory, L"Language"), L"ar");
+	const std::wstring runtime_log = JoinPath(language_directory, L"Arabic-setup.log");
+	if (!FileExists(script_path) || !FileExists(lcftrans_path)) {
+		(void)WriteRuntimeLogLine(runtime_log, L"Arabic PO initialization could not start: bundled updater or LcfTrans is missing.\r\n");
+		return;
+	}
+	if (!CreateDirectoryW(JoinPath(project_directory, L"Language").c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) {
+		(void)WriteRuntimeLogLine(runtime_log, L"Arabic PO initialization could not start: cannot create Language directory.\r\n");
+		return;
+	}
+	if (!CreateDirectoryW(language_directory.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) {
+		(void)WriteRuntimeLogLine(runtime_log, L"Arabic PO initialization could not start: cannot create Language/ar directory.\r\n");
+		return;
+	}
+	(void)WriteRuntimeLogLine(runtime_log, L"Arabic PO initialization started.\r\n");
+
+	const std::wstring powershell = GetPowerShellExecutable();
+	if (powershell.empty()) {
+		(void)WriteRuntimeLogLine(runtime_log, L"Arabic PO initialization failed: Windows PowerShell was not found.\r\n");
+		return;
+	}
+	std::wstring command_line = QuoteWindowsArgument(powershell)
+		+ L" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "
+		+ QuoteWindowsArgument(script_path)
+		+ L" -GamePath " + QuoteWindowsArgument(project_directory)
+		+ L" -LcfTransPath " + QuoteWindowsArgument(lcftrans_path)
+		+ L" -InitializeNewProject"
+		+ L" -RuntimeLogPath " + QuoteWindowsArgument(runtime_log);
+	std::vector<wchar_t> mutable_command_line(command_line.begin(), command_line.end());
+	mutable_command_line.push_back(L'\0');
+	STARTUPINFOW startup_info{};
+	startup_info.cb = sizeof(startup_info);
+	startup_info.dwFlags = STARTF_USESHOWWINDOW;
+	startup_info.wShowWindow = SW_HIDE;
+	PROCESS_INFORMATION process_info{};
+	if (!original_create_process_w(powershell.c_str(), mutable_command_line.data(), nullptr, nullptr, FALSE,
+		CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT, nullptr, project_directory.c_str(), &startup_info, &process_info)) {
+		const DWORD error = GetLastError();
+		(void)WriteRuntimeLogLine(runtime_log, L"Arabic PO initialization failed to launch Windows PowerShell (Win32 error " + std::to_wstring(error) + L").\r\n");
+		return;
+	}
+	(void)original_close_handle(process_info.hThread);
+	(void)original_close_handle(process_info.hProcess);
+}
+
+void OnNewProjectMapReadClosed(HANDLE handle) {
+	if (tracked_map_read_handle.load(std::memory_order_acquire) != handle) { return; }
+	HANDLE expected = handle;
+	if (!tracked_map_read_handle.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel)) { return; }
+	std::wstring project_directory;
+	{
+		std::lock_guard<std::mutex> lock(new_project_mutex);
+		project_directory = tracked_map_directory;
+		candidate_updater_started = true;
+		tracked_map_directory.clear();
+		candidate_project_directory.clear();
+		ready_project_directory.clear();
+	}
+	if (!project_directory.empty()) {
+		try { LaunchArabicProjectUpdater(project_directory); }
+		catch (...) { (void)WriteRuntimeLogLine(JoinPath(JoinPath(project_directory, L"Language\\ar"), L"Arabic-setup.log"), L"Arabic PO initialization failed unexpectedly.\r\n"); }
+	}
 }
 
 std::wstring ResolveAgainstDirectory(const std::wstring& path, const wchar_t* requested_directory) {
@@ -306,21 +499,22 @@ bool ResolveManagedPaths() {
 	}
 	managed_runtime_path = FullPath(JoinPath(directory, L"RPG_RT.exe"));
 	managed_player_path = FullPath(JoinPath(directory, L"Player.exe"));
+	managed_database_template_path = FullPath(JoinPath(directory, L"RPG_RT.ldb.dat"));
 	return !managed_runtime_path.empty() && !managed_player_path.empty();
 }
 
-void CopyPlayerTemplate(const std::wstring& destination_runtime_path) {
+bool CopyPlayerTemplate(const std::wstring& destination_runtime_path) {
 	if (original_copy_file_w == nullptr || managed_player_path.empty() || !FileExists(managed_player_path)) {
-		return;
+		return false;
 	}
 	const std::wstring project_directory = ParentDirectory(destination_runtime_path);
 	if (project_directory.empty()) {
-		return;
+		return false;
 	}
 	const std::wstring project_player_path = JoinPath(project_directory, L"Player.exe");
 	// CopyFileW's fail-if-exists flag protects a user's project-local Player.exe,
 	// including a file created between this check and the copy operation.
-	(void)original_copy_file_w(managed_player_path.c_str(), project_player_path.c_str(), TRUE);
+	return original_copy_file_w(managed_player_path.c_str(), project_player_path.c_str(), TRUE) != FALSE;
 }
 
 BOOL WINAPI HookCopyFileW(LPCWSTR source, LPCWSTR destination, BOOL fail_if_exists) {
@@ -328,10 +522,13 @@ BOOL WINAPI HookCopyFileW(LPCWSTR source, LPCWSTR destination, BOOL fail_if_exis
 		SetLastError(ERROR_PROC_NOT_FOUND);
 		return FALSE;
 	}
-	if (intercepted_api_depth != 0 || !IsRpgRtPath(source) || !IsRpgRtPath(destination)) {
+	const bool runtime_copy = IsRpgRtPath(source) && IsRpgRtPath(destination);
+	const bool database_copy = IsDatabaseTemplateSourcePath(source) && IsProjectDatabasePath(destination);
+	if (intercepted_api_depth != 0 || (!runtime_copy && !database_copy)) {
 		return original_copy_file_w(source, destination, fail_if_exists);
 	}
 
+	const bool destination_existed = FileExists(destination);
 	InterceptionScope scope;
 	const BOOL copied = original_copy_file_w(source, destination, fail_if_exists);
 	const DWORD original_error = GetLastError();
@@ -339,8 +536,11 @@ BOOL WINAPI HookCopyFileW(LPCWSTR source, LPCWSTR destination, BOOL fail_if_exis
 		try {
 			const std::wstring source_path = FullPath(source);
 			const std::wstring destination_path = FullPath(destination);
-			if (SamePath(source_path, managed_runtime_path) && !SamePath(destination_path, managed_runtime_path)) {
-				CopyPlayerTemplate(destination_path);
+			if (runtime_copy && SamePath(source_path, managed_runtime_path) && !SamePath(destination_path, managed_runtime_path)) {
+				const bool player_copied = CopyPlayerTemplate(destination_path);
+				if (!destination_existed && player_copied) { RecordNewProjectRuntimeCopy(destination_path); }
+			} else if (database_copy && !destination_existed && IsDatabaseTemplatePath(source_path)) {
+				RecordNewProjectDatabaseCopy(source_path, destination_path);
 			}
 		} catch (...) {
 			// A Player template copy is supplemental; keep project creation's result.
@@ -355,10 +555,15 @@ BOOL WINAPI HookCopyFileA(LPCSTR source, LPCSTR destination, BOOL fail_if_exists
 		SetLastError(ERROR_PROC_NOT_FOUND);
 		return FALSE;
 	}
-	if (intercepted_api_depth != 0 || !IsRpgRtPath(source) || !IsRpgRtPath(destination)) {
+	const bool runtime_copy = IsRpgRtPath(source) && IsRpgRtPath(destination);
+	const bool database_copy = IsDatabaseTemplateSourcePath(source) && IsProjectDatabasePath(destination);
+	if (intercepted_api_depth != 0 || (!runtime_copy && !database_copy)) {
 		return original_copy_file_a(source, destination, fail_if_exists);
 	}
 
+	std::wstring destination_wide_before;
+	const bool converted_destination = AnsiToWide(destination, destination_wide_before);
+	const bool destination_existed = converted_destination && FileExists(FullPath(destination_wide_before));
 	InterceptionScope scope;
 	const BOOL copied = original_copy_file_a(source, destination, fail_if_exists);
 	const DWORD original_error = GetLastError();
@@ -369,8 +574,11 @@ BOOL WINAPI HookCopyFileA(LPCSTR source, LPCSTR destination, BOOL fail_if_exists
 			if (AnsiToWide(source, source_wide) && AnsiToWide(destination, destination_wide)) {
 				const std::wstring source_path = FullPath(source_wide);
 				const std::wstring destination_path = FullPath(destination_wide);
-				if (SamePath(source_path, managed_runtime_path) && !SamePath(destination_path, managed_runtime_path)) {
-					CopyPlayerTemplate(destination_path);
+				if (runtime_copy && SamePath(source_path, managed_runtime_path) && !SamePath(destination_path, managed_runtime_path)) {
+					const bool player_copied = CopyPlayerTemplate(destination_path);
+					if (!destination_existed && player_copied) { RecordNewProjectRuntimeCopy(destination_path); }
+				} else if (database_copy && !destination_existed && IsDatabaseTemplatePath(source_path)) {
+					RecordNewProjectDatabaseCopy(source_path, destination_path);
 				}
 			}
 		} catch (...) {
@@ -566,6 +774,121 @@ BOOL WINAPI HookCreateProcessA(
 		startup_info, process_information);
 }
 
+void TrackNewProjectMapRead(HANDLE handle, const std::wstring& path, DWORD desired_access, DWORD creation_disposition) {
+	if (handle == INVALID_HANDLE_VALUE || !IsCandidateMapRead(path, desired_access, creation_disposition)) { return; }
+	const std::wstring directory = ParentDirectory(path);
+	if (directory.empty()) { return; }
+	std::lock_guard<std::mutex> lock(new_project_mutex);
+	if (!ready_project_directory.empty() && SamePath(directory, ready_project_directory) &&
+		tracked_map_read_handle.load(std::memory_order_relaxed) == nullptr) {
+		tracked_map_directory = directory;
+		tracked_map_read_handle.store(handle, std::memory_order_release);
+	}
+}
+
+HANDLE WINAPI HookCreateFileW(
+	LPCWSTR file_name,
+	DWORD desired_access,
+	DWORD share_mode,
+	LPSECURITY_ATTRIBUTES security_attributes,
+	DWORD creation_disposition,
+	DWORD flags_and_attributes,
+	HANDLE template_file) {
+	if (original_create_file_w == nullptr) {
+		SetLastError(ERROR_PROC_NOT_FOUND);
+		return INVALID_HANDLE_VALUE;
+	}
+	const bool possible_new_project_map_read = file_name != nullptr &&
+		(desired_access & GENERIC_READ) != 0 && creation_disposition == OPEN_EXISTING &&
+		EqualsAsciiInsensitive(LeafName(std::wstring_view(file_name)), "Map0001.lmu") &&
+		tracked_map_read_handle.load(std::memory_order_acquire) == nullptr;
+	if (intercepted_api_depth != 0 || !possible_new_project_map_read) {
+		return original_create_file_w(file_name, desired_access, share_mode, security_attributes,
+			creation_disposition, flags_and_attributes, template_file);
+	}
+	std::wstring path;
+	try { path = FullPath(file_name); }
+	catch (...) { return original_create_file_w(file_name, desired_access, share_mode, security_attributes,
+		creation_disposition, flags_and_attributes, template_file); }
+	if (!IsCandidateMapRead(path, desired_access, creation_disposition)) {
+		return original_create_file_w(file_name, desired_access, share_mode, security_attributes,
+			creation_disposition, flags_and_attributes, template_file);
+	}
+	InterceptionScope scope;
+	HANDLE handle = original_create_file_w(file_name, desired_access, share_mode, security_attributes,
+		creation_disposition, flags_and_attributes, template_file);
+	const DWORD original_error = GetLastError();
+	if (handle != INVALID_HANDLE_VALUE) {
+		try { TrackNewProjectMapRead(handle, path, desired_access, creation_disposition); }
+		catch (...) { /* Project creation must remain independent from optional PO setup. */ }
+	}
+	SetLastError(original_error);
+	return handle;
+}
+
+HANDLE WINAPI HookCreateFileA(
+	LPCSTR file_name,
+	DWORD desired_access,
+	DWORD share_mode,
+	LPSECURITY_ATTRIBUTES security_attributes,
+	DWORD creation_disposition,
+	DWORD flags_and_attributes,
+	HANDLE template_file) {
+	if (original_create_file_a == nullptr) {
+		SetLastError(ERROR_PROC_NOT_FOUND);
+		return INVALID_HANDLE_VALUE;
+	}
+	const bool possible_new_project_map_read = file_name != nullptr &&
+		(desired_access & GENERIC_READ) != 0 && creation_disposition == OPEN_EXISTING &&
+		EqualsAsciiInsensitive(LeafName(std::string_view(file_name)), "Map0001.lmu") &&
+		tracked_map_read_handle.load(std::memory_order_acquire) == nullptr;
+	if (intercepted_api_depth != 0 || !possible_new_project_map_read) {
+		return original_create_file_a(file_name, desired_access, share_mode, security_attributes,
+			creation_disposition, flags_and_attributes, template_file);
+	}
+	std::wstring path;
+	if (!AnsiToWide(file_name, path)) {
+		return original_create_file_a(file_name, desired_access, share_mode, security_attributes,
+			creation_disposition, flags_and_attributes, template_file);
+	}
+	try { path = FullPath(path); }
+	catch (...) { return original_create_file_a(file_name, desired_access, share_mode, security_attributes,
+		creation_disposition, flags_and_attributes, template_file); }
+	if (!IsCandidateMapRead(path, desired_access, creation_disposition)) {
+		return original_create_file_a(file_name, desired_access, share_mode, security_attributes,
+			creation_disposition, flags_and_attributes, template_file);
+	}
+	InterceptionScope scope;
+	HANDLE handle = original_create_file_a(file_name, desired_access, share_mode, security_attributes,
+		creation_disposition, flags_and_attributes, template_file);
+	const DWORD original_error = GetLastError();
+	if (handle != INVALID_HANDLE_VALUE) {
+		try { TrackNewProjectMapRead(handle, path, desired_access, creation_disposition); }
+		catch (...) { /* Project creation must remain independent from optional PO setup. */ }
+	}
+	SetLastError(original_error);
+	return handle;
+}
+
+BOOL WINAPI HookCloseHandle(HANDLE handle) {
+	if (original_close_handle == nullptr) {
+		SetLastError(ERROR_PROC_NOT_FOUND);
+		return FALSE;
+	}
+	if (intercepted_api_depth != 0 || tracked_map_read_handle.load(std::memory_order_acquire) != handle) {
+		return original_close_handle(handle);
+	}
+	InterceptionScope scope;
+	const BOOL closed = original_close_handle(handle);
+	const DWORD original_error = GetLastError();
+	if (closed) {
+		try { OnNewProjectMapReadClosed(handle); }
+		catch (...) { /* Arabic PO initialization is supplemental to new-project creation. */ }
+	}
+	SetLastError(original_error);
+	return closed;
+}
+
 bool InstallProjectRuntimeHooks() {
 	if (!ResolveManagedPaths()) {
 		return false;
@@ -578,21 +901,30 @@ bool InstallProjectRuntimeHooks() {
 	if (kernel_module == nullptr) {
 		return false;
 	}
-	const std::array<void*, 4> targets = {
+	const std::array<void*, 7> targets = {
 		reinterpret_cast<void*>(GetProcAddress(kernel_module, "CopyFileA")),
 		reinterpret_cast<void*>(GetProcAddress(kernel_module, "CopyFileW")),
+		reinterpret_cast<void*>(GetProcAddress(kernel_module, "CreateFileA")),
+		reinterpret_cast<void*>(GetProcAddress(kernel_module, "CreateFileW")),
+		reinterpret_cast<void*>(GetProcAddress(kernel_module, "CloseHandle")),
 		reinterpret_cast<void*>(GetProcAddress(kernel_module, "CreateProcessA")),
 		reinterpret_cast<void*>(GetProcAddress(kernel_module, "CreateProcessW"))
 	};
-	const std::array<void*, 4> detours = {
+	const std::array<void*, 7> detours = {
 		reinterpret_cast<void*>(&HookCopyFileA),
 		reinterpret_cast<void*>(&HookCopyFileW),
+		reinterpret_cast<void*>(&HookCreateFileA),
+		reinterpret_cast<void*>(&HookCreateFileW),
+		reinterpret_cast<void*>(&HookCloseHandle),
 		reinterpret_cast<void*>(&HookCreateProcessA),
 		reinterpret_cast<void*>(&HookCreateProcessW)
 	};
-	const std::array<void**, 4> originals = {
+	const std::array<void**, 7> originals = {
 		reinterpret_cast<void**>(&original_copy_file_a),
 		reinterpret_cast<void**>(&original_copy_file_w),
+		reinterpret_cast<void**>(&original_create_file_a),
+		reinterpret_cast<void**>(&original_create_file_w),
+		reinterpret_cast<void**>(&original_close_handle),
 		reinterpret_cast<void**>(&original_create_process_a),
 		reinterpret_cast<void**>(&original_create_process_w)
 	};

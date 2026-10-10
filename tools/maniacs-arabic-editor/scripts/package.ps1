@@ -88,6 +88,10 @@ if (-not $resolvedStage.StartsWith($resolvedTool, [StringComparison]::OrdinalIgn
 if (Test-Path -LiteralPath $resolvedStage) { Remove-Item -LiteralPath $resolvedStage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path (Join-Path $resolvedStage 'Plugin') | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $resolvedStage 'licenses') | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $resolvedStage 'ArabicSupport\tools') | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $resolvedStage 'ArabicSupport\terminology') | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $resolvedStage 'ArabicSupport\template\Language\ar\Font') | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $resolvedStage 'ArabicSupport\licenses') | Out-Null
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 
 $rootFiles = @('install.bat', 'install.ps1', 'uninstall.bat', 'uninstall.ps1', 'README.md', 'THIRD_PARTY.txt')
@@ -103,6 +107,30 @@ Remove-PeDebugMetadata (Join-Path $resolvedStage 'Plugin\0Harmony.dll')
 Copy-Item -LiteralPath (Join-Path $toolRoot 'third_party\easyrpgcommands\COPYING') -Destination (Join-Path $resolvedStage 'licenses\EasyRpgCommands-COPYING')
 Copy-Item -LiteralPath (Join-Path $toolRoot 'third_party\harmony\LICENSE') -Destination (Join-Path $resolvedStage 'licenses\Harmony-LICENSE')
 Copy-Item -LiteralPath (Join-Path $toolRoot 'third_party\minhook\LICENSE.txt') -Destination (Join-Path $resolvedStage 'licenses\MinHook-LICENSE.txt')
+
+$arabicSupport = Join-Path $resolvedStage 'ArabicSupport'
+Copy-Item -LiteralPath (Join-Path $repoRoot 'arabic\tools\update-arabic.ps1') -Destination (Join-Path $arabicSupport 'tools\update-arabic.ps1')
+Copy-Item -LiteralPath (Join-Path $repoRoot 'arabic\tools\lcftrans.exe') -Destination (Join-Path $arabicSupport 'tools\lcftrans.exe')
+Copy-Item -LiteralPath (Join-Path $repoRoot 'arabic\tools\lcftrans-source.json') -Destination (Join-Path $arabicSupport 'tools\lcftrans-source.json')
+Copy-Item -LiteralPath (Join-Path $repoRoot 'arabic\terminology\canonical-terms.json') -Destination (Join-Path $arabicSupport 'terminology\canonical-terms.json')
+Copy-Item -LiteralPath (Join-Path $repoRoot 'arabic\template\Language\ar\Meta.ini') -Destination (Join-Path $arabicSupport 'template\Language\ar\Meta.ini')
+foreach ($name in @('Font.ttf', 'OFL.txt', 'NOTICE.txt', 'SOURCE.txt')) {
+	Copy-Item -LiteralPath (Join-Path $repoRoot "arabic\template\Language\ar\Font\$name") -Destination (Join-Path $arabicSupport "template\Language\ar\Font\$name")
+}
+Copy-Item -LiteralPath (Join-Path $repoRoot 'arabic\licenses\LcfTrans-COPYING.txt') -Destination (Join-Path $arabicSupport 'licenses\LcfTrans-COPYING.txt')
+Copy-Item -LiteralPath (Join-Path $repoRoot 'arabic\licenses\liblcf-COPYING.txt') -Destination (Join-Path $arabicSupport 'licenses\liblcf-COPYING.txt')
+
+$lcfTransHash = (Get-FileHash -LiteralPath (Join-Path $arabicSupport 'tools\lcftrans.exe') -Algorithm SHA256).Hash
+if ($lcfTransHash -ne 'FF8C5C26CF4CA1FF3A837B2C67C1E458370F2340BFB57F4F7D652417AD239379') {
+	throw "Bundled LcfTrans hash is not the validated Windows x86 build: $lcfTransHash"
+}
+$fontHash = (Get-FileHash -LiteralPath (Join-Path $arabicSupport 'template\Language\ar\Font\Font.ttf') -Algorithm SHA256).Hash
+if ($fontHash -ne '68B412A4D8443FE677DD37412BB44D117CADE607572B2CC9689177DA3934952F') {
+	throw "Bundled Arabic PixelSmall font hash is not the validated historical release: $fontHash"
+}
+$canonical = Get-Content -LiteralPath (Join-Path $arabicSupport 'terminology\canonical-terms.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$canonicalCount = @($canonical.PSObject.Properties | Where-Object { $_.Name.StartsWith('terms.', [System.StringComparison]::Ordinal) }).Count
+if ($canonicalCount -ne 143) { throw "Expected 143 canonical terms in the package, found $canonicalCount." }
 
 if (Get-ChildItem -LiteralPath $resolvedStage -Recurse -File -Filter '*.pdb') {
 	throw 'The package staging directory must not contain PDB files.'

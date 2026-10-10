@@ -30,6 +30,7 @@ install_manifest.txt
 *.vsp*
 *.lib
 *.exe
+!arabic/tools/lcftrans.exe
 *.exp
 *.ilk
 *.pdb

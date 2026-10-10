@@ -63,4 +63,49 @@ public sealed class InstallTransactionTests
 		Assert.NotNull(transaction.PreviousGenerationBackup);
 		Assert.Equal("old", await File.ReadAllTextAsync(Path.Combine(transaction.PreviousGenerationBackup!, "version.txt")));
 	}
+
+	[Fact]
+	public async Task ArabicChildStagesAndCommitsOnlyInsideManagedFolder()
+	{
+		using var fixture = new SteamDetectionTests.TempDirectory();
+		var source = Path.Combine(fixture.Path, "RPG Maker 2003");
+		Directory.CreateDirectory(source);
+		File.WriteAllText(Path.Combine(source, "rpg2003.exe"), "vanilla-runtime");
+		File.WriteAllText(Path.Combine(source, "vanilla-only.txt"), "keep");
+		var destination = Path.Combine(source, "Arabic");
+
+		await using var transaction = await InstallTransaction.CreateAsync(source, destination);
+
+		Assert.StartsWith(destination + Path.DirectorySeparatorChar, transaction.StagingDirectory, StringComparison.OrdinalIgnoreCase);
+		Assert.Equal(destination, Path.GetDirectoryName(transaction.StagingDirectory));
+		File.WriteAllText(Path.Combine(transaction.StagingDirectory, "Player.exe"), "player");
+		await transaction.CommitAsync(replaceExisting: false);
+
+		Assert.Equal("player", await File.ReadAllTextAsync(Path.Combine(destination, "Player.exe")));
+		Assert.Equal("vanilla-runtime", await File.ReadAllTextAsync(Path.Combine(source, "rpg2003.exe")));
+		Assert.Equal("keep", await File.ReadAllTextAsync(Path.Combine(source, "vanilla-only.txt")));
+		Assert.Empty(Directory.EnumerateDirectories(source, ".EasyRPG-Arabic.staging-*", SearchOption.TopDirectoryOnly));
+		Assert.Empty(Directory.EnumerateDirectories(destination, ".EasyRPG-Arabic.staging-*", SearchOption.TopDirectoryOnly));
+	}
+
+	[Fact]
+	public async Task ArabicChildRollbackPreservesExistingDestinationAndSource()
+	{
+		using var fixture = new SteamDetectionTests.TempDirectory();
+		var source = Path.Combine(fixture.Path, "RPG Maker 2003");
+		Directory.CreateDirectory(source);
+		File.WriteAllText(Path.Combine(source, "rpg2003.exe"), "vanilla-runtime");
+		var destination = Path.Combine(source, "Arabic");
+		Directory.CreateDirectory(destination);
+		File.WriteAllText(Path.Combine(destination, "sentinel.txt"), "old-managed-content");
+
+		var transaction = await InstallTransaction.CreateAsync(source, destination);
+		File.WriteAllText(Path.Combine(transaction.StagingDirectory, "partial.txt"), "partial");
+		await transaction.RollbackAsync();
+		await transaction.DisposeAsync();
+
+		Assert.Equal("old-managed-content", await File.ReadAllTextAsync(Path.Combine(destination, "sentinel.txt")));
+		Assert.Equal("vanilla-runtime", await File.ReadAllTextAsync(Path.Combine(source, "rpg2003.exe")));
+		Assert.Empty(Directory.EnumerateDirectories(destination, ".EasyRPG-Arabic.staging-*", SearchOption.TopDirectoryOnly));
+	}
 }

@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "version": "0.8.1",
-  "buildId": "fc479ae90f8b47217545ee94d4c754f6c0984845",
+  "buildId": "3aff8a993a2f0ab37a579313d6267830f07b9e1c",
   "architecture": "x64",
-  "sha256": "2B3EC3395FB76F970368D0F82F20399315CE2F7C20933DEA6266541E5004DF51",
+  "sha256": "A5885AA58A9D59A7BA4EFA8DF8611551E15AD53D4FFFD109D2979D1196651AF5",
   "size": 14567424,
   "requiredManiacsBuildId": "241029",
   "installedPath": "Player.exe"

@@ -9,6 +9,12 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ApplicationIcon />
+    <SetupBuildFlavor Condition="'$(SetupBuildFlavor)' == ''">Public</SetupBuildFlavor>
+    <ManiacsPackageSource Condition="'$(ManiacsPackageSource)' == ''">UserSuppliedValidatedPackage</ManiacsPackageSource>
+    <ManiacsRedistributionPermissionConfirmed Condition="'$(ManiacsRedistributionPermissionConfirmed)' == ''">false</ManiacsRedistributionPermissionConfirmed>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(ManiacsPackageSource)' == 'EmbeddedValidated241029'">
+    <DefineConstants>$(DefineConstants);EMBEDDED_VALIDATED_241029</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Setup.Core\Setup.Core.csproj" />
@@ -17,4 +23,18 @@
     <EmbeddedResource Include="..\..\..\..\build\windows-x64-vs2022-release\Release\Player.exe"
                       LogicalName="EasyRpgArabic.Setup.EasyRpgArabic.Player.exe" />
   </ItemGroup>
+  <ItemGroup Condition="'$(ManiacsPackageSource)' == 'EmbeddedValidated241029'">
+    <EmbeddedResource Include="$(ManiacsEmbeddedArchivePath)"
+                      LogicalName="EasyRpgArabic.Setup.Maniacs241029.zip" />
+  </ItemGroup>
+  <Target Name="ValidateManiacsPackageBuildConfiguration" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(SetupBuildFlavor)' != 'Public' and '$(SetupBuildFlavor)' != 'PrivateInternal'"
+           Text="SetupBuildFlavor must be Public or PrivateInternal." />
+    <Error Condition="'$(ManiacsPackageSource)' != 'EmbeddedValidated241029' and '$(ManiacsPackageSource)' != 'UserSuppliedValidatedPackage'"
+           Text="ManiacsPackageSource must be EmbeddedValidated241029 or UserSuppliedValidatedPackage." />
+    <Error Condition="'$(ManiacsPackageSource)' == 'EmbeddedValidated241029' and '$(SetupBuildFlavor)' != 'PrivateInternal' and '$(ManiacsRedistributionPermissionConfirmed)' != 'true'"
+           Text="Embedding Maniacs in a public Setup build requires explicit ManiacsRedistributionPermissionConfirmed=true." />
+    <Error Condition="'$(ManiacsPackageSource)' == 'EmbeddedValidated241029' and !Exists('$(ManiacsEmbeddedArchivePath)')"
+           Text="EmbeddedValidated241029 requires a validated archive at ManiacsEmbeddedArchivePath." />
+  </Target>
 </Project>

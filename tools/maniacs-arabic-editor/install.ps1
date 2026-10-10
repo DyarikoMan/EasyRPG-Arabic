@@ -78,8 +78,22 @@ if (-not (Test-Path -LiteralPath $pluginDir -PathType Container)) {
 	throw 'This folder does not look like a Maniacs installation: missing Plugin folder.'
 }
 
-$payloadDir = Join-Path $PSScriptRoot 'Plugin'
-$fileNames = @('EasyCmdTos.dll', 'EasyRpgCommands.dll', '0Harmony.dll')
+$payloadEntries = @(
+	@{ PackagePath = 'Plugin\EasyCmdTos.dll'; RelativePath = 'Plugin\EasyCmdTos.dll' },
+	@{ PackagePath = 'Plugin\EasyRpgCommands.dll'; RelativePath = 'Plugin\EasyRpgCommands.dll' },
+	@{ PackagePath = 'Plugin\0Harmony.dll'; RelativePath = 'Plugin\0Harmony.dll' },
+	@{ PackagePath = 'ArabicSupport\tools\update-arabic.ps1'; RelativePath = 'ArabicSupport\tools\update-arabic.ps1' },
+	@{ PackagePath = 'ArabicSupport\tools\lcftrans.exe'; RelativePath = 'ArabicSupport\tools\lcftrans.exe' },
+	@{ PackagePath = 'ArabicSupport\tools\lcftrans-source.json'; RelativePath = 'ArabicSupport\tools\lcftrans-source.json' },
+	@{ PackagePath = 'ArabicSupport\terminology\canonical-terms.json'; RelativePath = 'ArabicSupport\terminology\canonical-terms.json' },
+	@{ PackagePath = 'ArabicSupport\template\Language\ar\Meta.ini'; RelativePath = 'ArabicSupport\template\Language\ar\Meta.ini' },
+	@{ PackagePath = 'ArabicSupport\template\Language\ar\Font\Font.ttf'; RelativePath = 'ArabicSupport\template\Language\ar\Font\Font.ttf' },
+	@{ PackagePath = 'ArabicSupport\template\Language\ar\Font\OFL.txt'; RelativePath = 'ArabicSupport\template\Language\ar\Font\OFL.txt' },
+	@{ PackagePath = 'ArabicSupport\template\Language\ar\Font\NOTICE.txt'; RelativePath = 'ArabicSupport\template\Language\ar\Font\NOTICE.txt' },
+	@{ PackagePath = 'ArabicSupport\template\Language\ar\Font\SOURCE.txt'; RelativePath = 'ArabicSupport\template\Language\ar\Font\SOURCE.txt' },
+	@{ PackagePath = 'ArabicSupport\licenses\LcfTrans-COPYING.txt'; RelativePath = 'ArabicSupport\licenses\LcfTrans-COPYING.txt' },
+	@{ PackagePath = 'ArabicSupport\licenses\liblcf-COPYING.txt'; RelativePath = 'ArabicSupport\licenses\liblcf-COPYING.txt' }
+)
 $stateDir = Join-Path $root '.ManiacsArabicEditor'
 $backupDir = Join-Path $stateDir 'backups'
 $statePath = Join-Path $stateDir 'install-state.json'
@@ -101,11 +115,13 @@ if ($null -ne $oldState) {
 
 $newFiles = @()
 $snapshotTag = 'reinstall-' + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff') + '-' + [Guid]::NewGuid().ToString('N')
-foreach ($name in $fileNames) {
-	$source = Join-Path $payloadDir $name
-	if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Package is incomplete: missing Plugin\$name" }
-	$relative = "Plugin\$name"
-	$destination = Join-Path $pluginDir $name
+foreach ($entry in $payloadEntries) {
+	$source = Join-Path $PSScriptRoot $entry.PackagePath
+	if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Package is incomplete: missing $($entry.PackagePath)" }
+	$relative = [string]$entry.RelativePath
+	$destination = Join-Path $root $relative
+	$destinationParent = Split-Path -Parent $destination
+	if (-not (Test-Path -LiteralPath $destinationParent -PathType Container)) { New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null }
 	$sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
 
 	if ($oldFiles.ContainsKey($relative)) {
@@ -133,7 +149,7 @@ foreach ($name in $fileNames) {
 			$originalBackup = Join-Path $backupDir (Join-Path 'original' $relative)
 			New-Item -ItemType Directory -Force -Path (Split-Path -Parent $originalBackup) | Out-Null
 			Copy-Item -LiteralPath $destination -Destination $originalBackup -Force
-			Write-Host "Backed up existing Plugin\$name to $originalBackup"
+			Write-Host "Backed up existing $relative to $originalBackup"
 		}
 		$record = @{
 			Path = $relative
@@ -147,9 +163,10 @@ foreach ($name in $fileNames) {
 
 $state = @{ Version = 1; Files = $newFiles }
 Save-State $state $statePath
-foreach ($name in $fileNames) {
-	Copy-Item -LiteralPath (Join-Path $payloadDir $name) -Destination (Join-Path $pluginDir $name) -Force
-	Write-Host "Installed Plugin\$name"
+foreach ($entry in $payloadEntries) {
+	$destination = Join-Path $root $entry.RelativePath
+	Copy-Item -LiteralPath (Join-Path $PSScriptRoot $entry.PackagePath) -Destination $destination -Force
+	Write-Host "Installed $($entry.RelativePath)"
 }
 
 Write-Host ''

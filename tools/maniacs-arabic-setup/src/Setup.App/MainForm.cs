@@ -1,6 +1,7 @@
+using System.Diagnostics;
 using EasyRpgArabic.Setup.Core.Detection;
-using EasyRpgArabic.Setup.Core.Modules;
 using EasyRpgArabic.Setup.Core.Maniacs;
+using EasyRpgArabic.Setup.Core.Modules;
 using EasyRpgArabic.Setup.Core.Transactions;
 
 namespace EasyRpgArabic.Setup.App;
@@ -12,87 +13,215 @@ internal sealed class MainForm : Form
 	private readonly ManiacsSetupModule? _maniacsModule;
 	private readonly Dictionary<string, CheckBox> _moduleChecks = new(StringComparer.OrdinalIgnoreCase);
 	private readonly TextBox _sourcePath = new();
+	private readonly Button _browseSourceButton = new();
 	private readonly TextBox _maniacsPackagePath = new();
+	private readonly Label _maniacsPackagePathLabel = new();
+	private readonly Button _browseManiacsPackageButton = new();
+	private readonly ComboBox _maniacsPackageSource = new();
+	private readonly Label _maniacsPackageSourceLabel = new();
 	private readonly TextBox _destinationPath = new();
+	private readonly Button _browseDestinationButton = new();
 	private readonly Label _maniacsPackageStatus = new();
 	private readonly Label _detectionStatus = new();
 	private readonly Label _operationStatus = new();
+	private readonly ProgressBar _installationProgress = new();
 	private readonly Button _installButton = new();
 	private readonly Button _advancedButton = new();
 	private readonly Panel _advancedPanel = new();
+	private readonly Panel _successPanel = new();
+	private readonly Label _successStatus = new();
+	private readonly TemporaryManiacsPackage? _embeddedManiacsPackage;
+	private readonly string? _embeddedManiacsPackageError;
 	private bool _destinationManuallyChanged;
+	private bool _updatingDestination;
+	private bool _advancedExpanded;
+	private bool _privateEmbeddedBuild;
+	private string? _successfulInstallDirectory;
 
-	public MainForm(SteamRpgMaker2003Detector detector, IReadOnlyList<ISetupModule> modules)
+	public MainForm(
+		SteamRpgMaker2003Detector detector,
+		IReadOnlyList<ISetupModule> modules,
+		ManiacsPackageSourceMode defaultManiacsPackageSource,
+		Func<Stream>? openEmbeddedManiacsPackage)
 	{
 		_detector = detector;
 		_modules = modules;
 		_maniacsModule = modules.OfType<ManiacsSetupModule>().SingleOrDefault();
+		_privateEmbeddedBuild = IsEmbeddedManiacsPackageBuild(defaultManiacsPackageSource);
+		if (defaultManiacsPackageSource == ManiacsPackageSourceMode.EmbeddedValidated241029)
+		{
+			try
+			{
+				if (openEmbeddedManiacsPackage is null)
+				{
+					throw new InvalidDataException("This build selected an embedded Maniacs package but contains no package resource.");
+				}
+				_embeddedManiacsPackage = TemporaryManiacsPackage.Extract(openEmbeddedManiacsPackage);
+				if (_maniacsModule is null)
+				{
+					throw new InvalidDataException("The Maniacs package inspector is unavailable.");
+				}
+				var inspection = _maniacsModule.InspectPackage(_embeddedManiacsPackage.DirectoryPath);
+				if (!inspection.IsKnownSupportedBuild || !inspection.ArabicEditorValidated)
+				{
+					throw new InvalidDataException("The embedded Maniacs package failed the existing exact 241029 fingerprint or Arabic Editor compatibility checks. " + inspection.Summary);
+				}
+			}
+			catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+			{
+				_embeddedManiacsPackageError = exception.Message;
+				_embeddedManiacsPackage?.Dispose();
+				_embeddedManiacsPackage = null;
+			}
+		}
+
 		Text = "EasyRPG-Arabic Setup";
 		StartPosition = FormStartPosition.CenterScreen;
 		FormBorderStyle = FormBorderStyle.FixedDialog;
 		MaximizeBox = false;
 		MinimizeBox = true;
-		ClientSize = new Size(760, 550);
+		ClientSize = new Size(710, 326);
 		Font = new Font("Segoe UI", 9F);
 
-		BuildLayout();
+		BuildLayout(defaultManiacsPackageSource);
 		DetectInstallation();
+		UpdatePackageSourceControls();
 	}
 
-	private void BuildLayout()
+	private void BuildLayout(ManiacsPackageSourceMode defaultManiacsPackageSource)
 	{
 		var heading = new Label
 		{
 			Text = "EasyRPG-Arabic Setup",
 			Font = new Font(Font, FontStyle.Bold),
 			Location = new Point(24, 20),
-			Size = new Size(690, 34)
+			Size = new Size(660, 34)
 		};
 		Controls.Add(heading);
 
-		_detectionStatus.Location = new Point(24, 60);
-		_detectionStatus.Size = new Size(700, 24);
+		var sourceLabel = new Label { Text = "RPG Maker 2003", Location = new Point(24, 67), Size = new Size(240, 22) };
+		Controls.Add(sourceLabel);
+		_detectionStatus.Location = new Point(460, 67);
+		_detectionStatus.Size = new Size(224, 22);
+		_detectionStatus.TextAlign = ContentAlignment.MiddleRight;
 		Controls.Add(_detectionStatus);
 
-		var sourceLabel = new Label { Text = "Vanilla Steam RPG Maker 2003 folder", Location = new Point(24, 96), Size = new Size(360, 22) };
-		Controls.Add(sourceLabel);
-		_sourcePath.Location = new Point(24, 122);
-		_sourcePath.Size = new Size(590, 28);
-		_sourcePath.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+		_sourcePath.Location = new Point(24, 93);
+		_sourcePath.Size = new Size(660, 28);
+		_sourcePath.ReadOnly = true;
 		_sourcePath.TextChanged += (_, _) => UpdateSourceValidation();
 		Controls.Add(_sourcePath);
+		_browseSourceButton.Text = "Browse...";
+		_browseSourceButton.Location = new Point(592, 92);
+		_browseSourceButton.Size = new Size(92, 30);
+		_browseSourceButton.Visible = false;
+		_browseSourceButton.Click += (_, _) => BrowseForSource();
+		Controls.Add(_browseSourceButton);
 
-		var browseSource = new Button { Text = "Browse...", Location = new Point(626, 120), Size = new Size(108, 30), Anchor = AnchorStyles.Top | AnchorStyles.Right };
-		browseSource.Click += (_, _) => BrowseForSource();
-		Controls.Add(browseSource);
-
-		var recommendedLabel = new Label
+		var destinationLabel = new Label { Text = "Install Arabic version to", Location = new Point(24, 145), Size = new Size(320, 22) };
+		Controls.Add(destinationLabel);
+		_destinationPath.Location = new Point(24, 171);
+		_destinationPath.Size = new Size(660, 28);
+		_destinationPath.ReadOnly = true;
+		_destinationPath.TextChanged += (_, _) =>
 		{
-			Text = "Recommended setup",
-			Font = new Font(Font, FontStyle.Bold),
-			Location = new Point(24, 174),
-			Size = new Size(400, 24)
+			if (!_updatingDestination) { _destinationManuallyChanged = true; }
 		};
-		Controls.Add(recommendedLabel);
+		Controls.Add(_destinationPath);
+		_browseDestinationButton.Text = "Browse...";
+		_browseDestinationButton.Location = new Point(592, 170);
+		_browseDestinationButton.Size = new Size(92, 30);
+		_browseDestinationButton.Visible = false;
+		_browseDestinationButton.Click += (_, _) => BrowseForDestination();
+		Controls.Add(_browseDestinationButton);
 
+		_advancedButton.Text = "Advanced options  ▸";
+		_advancedButton.Location = new Point(24, 218);
+		_advancedButton.Size = new Size(190, 30);
+		_advancedButton.FlatStyle = FlatStyle.Flat;
+		_advancedButton.Click += (_, _) => ToggleAdvancedOptions();
+		Controls.Add(_advancedButton);
+
+		_advancedPanel.Location = new Point(24, 254);
+		_advancedPanel.Size = new Size(660, 350);
+		_advancedPanel.Visible = false;
+		_advancedPanel.BorderStyle = BorderStyle.FixedSingle;
+
+		_maniacsPackageSourceLabel.Text = "Maniacs package source";
+		_maniacsPackageSourceLabel.Location = new Point(8, 8);
+		_maniacsPackageSourceLabel.Size = new Size(250, 22);
+		_advancedPanel.Controls.Add(_maniacsPackageSourceLabel);
+		_maniacsPackageSource.DropDownStyle = ComboBoxStyle.DropDownList;
+		_maniacsPackageSource.Location = new Point(8, 31);
+		_maniacsPackageSource.Size = new Size(640, 28);
+		if (IsEmbeddedManiacsPackageBuild(defaultManiacsPackageSource))
+		{
+			_maniacsPackageSource.Items.Add(new PackageSourceChoice(ManiacsPackageSourceMode.EmbeddedValidated241029, "Use validated Maniacs 241029 included with this private setup"));
+		}
+		_maniacsPackageSource.Items.Add(new PackageSourceChoice(ManiacsPackageSourceMode.UserSuppliedValidatedPackage, "Use an extracted supported Maniacs package"));
+		_maniacsPackageSource.SelectedItem = _maniacsPackageSource.Items.Cast<PackageSourceChoice>()
+			.Single(choice => choice.Mode == defaultManiacsPackageSource);
+		_maniacsPackageSource.SelectedIndexChanged += (_, _) => UpdatePackageSourceControls();
+		_advancedPanel.Controls.Add(_maniacsPackageSource);
+
+		_maniacsPackagePathLabel.Text = "Extracted Maniacs package folder";
+		_maniacsPackagePathLabel.Location = new Point(8, 66);
+		_maniacsPackagePathLabel.Size = new Size(380, 20);
+		_advancedPanel.Controls.Add(_maniacsPackagePathLabel);
+		_maniacsPackagePath.Location = new Point(8, 88);
+		_maniacsPackagePath.Size = new Size(536, 28);
+		_maniacsPackagePath.TextChanged += (_, _) => UpdateManiacsPackageInspection();
+		_advancedPanel.Controls.Add(_maniacsPackagePath);
+		_browseManiacsPackageButton.Text = "Browse...";
+		_browseManiacsPackageButton.Location = new Point(554, 87);
+		_browseManiacsPackageButton.Size = new Size(94, 30);
+		_browseManiacsPackageButton.Click += (_, _) => BrowseForManiacsPackage();
+		_advancedPanel.Controls.Add(_browseManiacsPackageButton);
+		_maniacsPackageStatus.Location = new Point(8, 120);
+		_maniacsPackageStatus.Size = new Size(640, 36);
+		_maniacsPackageStatus.ForeColor = Color.DimGray;
+		_advancedPanel.Controls.Add(_maniacsPackageStatus);
+		if (_privateEmbeddedBuild)
+		{
+			_maniacsPackageSourceLabel.Visible = false;
+			_maniacsPackageSource.Visible = false;
+			_maniacsPackagePathLabel.Visible = false;
+			_maniacsPackagePath.Visible = false;
+			_browseManiacsPackageButton.Visible = false;
+			_maniacsPackageStatus.Location = new Point(8, 8);
+			_maniacsPackageStatus.Size = new Size(640, 36);
+		}
+
+		_advancedPanel.Controls.Add(new Label
+		{
+			Text = "Selected modules",
+			Font = new Font(Font, FontStyle.Bold),
+			Location = new Point(8, 160),
+			Size = new Size(280, 22)
+		});
 		var modulePanel = new TableLayoutPanel
 		{
-			Location = new Point(24, 202),
-			Size = new Size(710, 156),
+			Location = new Point(8, 184),
+			Size = new Size(640, 154),
 			ColumnCount = 3,
 			RowCount = _modules.Count,
-			Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
 			CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
 		};
-		modulePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 38));
-		modulePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
+		modulePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
+		modulePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
 		modulePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 		for (var index = 0; index < _modules.Count; index++)
 		{
 			var descriptor = _modules[index].Descriptor;
-			modulePanel.RowStyles.Add(new RowStyle(SizeType.Percent, 25));
-			var check = new CheckBox { Checked = descriptor.Readiness == ModuleReadiness.Available, AutoSize = false, Size = new Size(20, 22), Anchor = AnchorStyles.None };
-			check.Enabled = descriptor.Readiness == ModuleReadiness.Available;
+			modulePanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F / Math.Max(1, _modules.Count)));
+			var check = new CheckBox
+			{
+				Checked = descriptor.Readiness == ModuleReadiness.Available,
+				AutoSize = false,
+				Size = new Size(20, 22),
+				Anchor = AnchorStyles.None,
+				Enabled = descriptor.Readiness == ModuleReadiness.Available
+			};
 			_moduleChecks.Add(descriptor.Id, check);
 			modulePanel.Controls.Add(check, 0, index);
 			modulePanel.Controls.Add(new Label { Text = descriptor.Name, TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill }, 1, index);
@@ -100,64 +229,39 @@ internal sealed class MainForm : Form
 			{
 				ModuleReadiness.NotImplemented => "Not implemented",
 				ModuleReadiness.Unavailable => "Unavailable",
-				_ when descriptor.Id is "maniacs" or "maniacs-english" => "Ready · exact supported package required",
+				_ when descriptor.Id is "maniacs" or "maniacs-english" => "Ready · validated Maniacs package required",
 				_ when descriptor.Id == "arabic-editor" => "Ready · requires Maniacs English",
-				_ when descriptor.Id == "easyrpg-arabic" => "Ready · x64 Player template for new projects",
+				_ when descriptor.Id == "easyrpg-arabic" => "Ready · installs EasyRPG Player support",
 				_ => descriptor.StatusMessage
 			};
-			var status = new Label { Text = statusText, TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill, ForeColor = descriptor.Readiness == ModuleReadiness.Available ? Color.DarkGreen : Color.DarkOrange };
+			var status = new Label
+			{
+				Text = statusText,
+				TextAlign = ContentAlignment.MiddleLeft,
+				Dock = DockStyle.Fill,
+				ForeColor = descriptor.Readiness == ModuleReadiness.Available ? Color.DarkGreen : Color.DarkOrange
+			};
 			modulePanel.Controls.Add(status, 2, index);
 		}
-		Controls.Add(modulePanel);
-
-		_advancedButton.Text = "Advanced options  ▸";
-		_advancedButton.Location = new Point(24, 378);
-		_advancedButton.Size = new Size(180, 30);
-		_advancedButton.FlatStyle = FlatStyle.Flat;
-		_advancedButton.Click += (_, _) => ToggleAdvancedOptions();
-		Controls.Add(_advancedButton);
-
-		_advancedPanel.Location = new Point(24, 414);
-		_advancedPanel.Size = new Size(710, 190);
-		_advancedPanel.Visible = false;
-		var destinationLabel = new Label { Text = "Separate managed installation folder", Location = new Point(0, 0), Size = new Size(400, 22) };
-		_advancedPanel.Controls.Add(destinationLabel);
-		_destinationPath.Location = new Point(0, 26);
-		_destinationPath.Size = new Size(590, 28);
-		_destinationPath.TextChanged += (_, _) => _destinationManuallyChanged = true;
-		_advancedPanel.Controls.Add(_destinationPath);
-		var browseDestination = new Button { Text = "Browse...", Location = new Point(602, 24), Size = new Size(108, 30) };
-		browseDestination.Click += (_, _) => BrowseForDestination();
-		_advancedPanel.Controls.Add(browseDestination);
-		_advancedPanel.Controls.Add(new Label
-		{
-			Text = "Extracted official Maniacs package (required for installation)",
-			Location = new Point(0, 61),
-			Size = new Size(500, 22)
-		});
-		_maniacsPackagePath.Location = new Point(0, 87);
-		_maniacsPackagePath.Size = new Size(590, 28);
-		_maniacsPackagePath.TextChanged += (_, _) => UpdateManiacsPackageInspection();
-		_advancedPanel.Controls.Add(_maniacsPackagePath);
-		var browseManiacsPackage = new Button { Text = "Browse...", Location = new Point(602, 85), Size = new Size(108, 30) };
-		browseManiacsPackage.Click += (_, _) => BrowseForManiacsPackage();
-		_advancedPanel.Controls.Add(browseManiacsPackage);
-		_maniacsPackageStatus.Location = new Point(0, 119);
-		_maniacsPackageStatus.Size = new Size(700, 66);
-		_maniacsPackageStatus.ForeColor = Color.DimGray;
-		_advancedPanel.Controls.Add(_maniacsPackageStatus);
+		_advancedPanel.Controls.Add(modulePanel);
 		Controls.Add(_advancedPanel);
-		UpdateManiacsPackageInspection();
 
-		_operationStatus.Location = new Point(24, 466);
-		_operationStatus.Size = new Size(520, 48);
+		_operationStatus.Location = new Point(24, 254);
+		_operationStatus.Size = new Size(490, 22);
 		_operationStatus.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
 		_operationStatus.ForeColor = Color.DarkSlateGray;
 		Controls.Add(_operationStatus);
+		_installationProgress.Location = new Point(24, 278);
+		_installationProgress.Size = new Size(490, 14);
+		_installationProgress.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+		_installationProgress.Minimum = 0;
+		_installationProgress.Maximum = 100;
+		_installationProgress.Visible = false;
+		Controls.Add(_installationProgress);
 
 		_installButton.Text = "Install";
-		_installButton.Location = new Point(612, 482);
-		_installButton.Size = new Size(122, 42);
+		_installButton.Location = new Point(560, 250);
+		_installButton.Size = new Size(124, 40);
 		_installButton.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
 		_installButton.BackColor = Color.FromArgb(0, 105, 190);
 		_installButton.ForeColor = Color.White;
@@ -165,38 +269,85 @@ internal sealed class MainForm : Form
 		_installButton.Font = new Font(Font, FontStyle.Bold);
 		_installButton.Click += async (_, _) => await InstallRecommendedAsync();
 		Controls.Add(_installButton);
+
+		_successPanel.Dock = DockStyle.Fill;
+		_successPanel.Visible = false;
+		_successPanel.BackColor = SystemColors.Window;
+		var successHeading = new Label
+		{
+			Text = "✓ EasyRPG-Arabic is ready.",
+			Font = new Font(Font, FontStyle.Bold),
+			Location = new Point(32, 36),
+			Size = new Size(520, 34)
+		};
+		_successPanel.Controls.Add(successHeading);
+		_successStatus.Location = new Point(32, 78);
+		_successStatus.Size = new Size(520, 28);
+		_successStatus.ForeColor = Color.DarkSlateGray;
+		_successPanel.Controls.Add(_successStatus);
+		var openButton = new Button { Text = "Open the installation folder", Location = new Point(32, 132), Size = new Size(250, 38) };
+		openButton.Click += async (_, _) => await OpenSuccessfulInstallationFolderAsync(closeAfterOpen: true);
+		_successPanel.Controls.Add(openButton);
+		var closeButton = new Button { Text = "Close", Location = new Point(440, 132), Size = new Size(96, 38) };
+		closeButton.Click += (_, _) => Close();
+		_successPanel.Controls.Add(closeButton);
+		Controls.Add(_successPanel);
+		_successPanel.BringToFront();
 	}
+
+	private static bool IsEmbeddedManiacsPackageBuild(ManiacsPackageSourceMode defaultSource) =>
+		defaultSource == ManiacsPackageSourceMode.EmbeddedValidated241029;
 
 	private void DetectInstallation()
 	{
 		var detected = _detector.Detect();
 		if (detected is null)
 		{
-			_detectionStatus.Text = "RPG Maker 2003 was not detected. Browse to your vanilla Steam installation.";
+			_detectionStatus.Text = "Not found";
 			_detectionStatus.ForeColor = Color.DarkOrange;
+			UpdateSourceValidation();
 			return;
 		}
 
 		_sourcePath.Text = detected.Directory;
-		_detectionStatus.Text = "RPG Maker 2003 detected and validated.";
-		_detectionStatus.ForeColor = Color.DarkGreen;
-		SetDefaultDestination(detected.Directory);
+		var validation = RpgMaker2003InstallationValidator.Validate(detected.Directory);
+		ShowSourceValidation(validation);
+		if (validation.IsValid) { SetDefaultDestination(detected.Directory); }
 	}
 
 	private void UpdateSourceValidation()
 	{
-		if (string.IsNullOrWhiteSpace(_sourcePath.Text)) { return; }
+		if (string.IsNullOrWhiteSpace(_sourcePath.Text))
+		{
+			_detectionStatus.Text = "Not found";
+			_detectionStatus.ForeColor = Color.DarkOrange;
+			RefreshSourceBrowseVisibility(false);
+			return;
+		}
+
 		var validation = RpgMaker2003InstallationValidator.Validate(_sourcePath.Text.Trim());
-		_detectionStatus.Text = validation.IsValid ? "RPG Maker 2003 detected and validated." : validation.Message;
-		_detectionStatus.ForeColor = validation.IsValid ? Color.DarkGreen : Color.DarkOrange;
+		ShowSourceValidation(validation);
 		if (validation.IsValid && !_destinationManuallyChanged) { SetDefaultDestination(_sourcePath.Text.Trim()); }
+	}
+
+	private void ShowSourceValidation(InstallationValidationResult validation)
+	{
+		_detectionStatus.Text = validation.IsValid ? "Found ✓" : "Check location";
+		_detectionStatus.ForeColor = validation.IsValid ? Color.DarkGreen : Color.DarkOrange;
+		RefreshSourceBrowseVisibility(validation.IsValid);
+	}
+
+	private void RefreshSourceBrowseVisibility(bool sourceIsValid)
+	{
+		_browseSourceButton.Visible = _advancedExpanded || !sourceIsValid;
+		_sourcePath.Size = new Size(_browseSourceButton.Visible ? 554 : 660, 28);
 	}
 
 	private void SetDefaultDestination(string source)
 	{
-		var parent = Directory.GetParent(Path.GetFullPath(source))?.FullName;
-		if (parent is null) { return; }
-		_destinationPath.Text = Path.Combine(parent, "RPG Maker 2003 - Arabic");
+		_updatingDestination = true;
+		try { _destinationPath.Text = Path.Combine(Path.GetFullPath(source), "Arabic"); }
+		finally { _updatingDestination = false; }
 		_destinationManuallyChanged = false;
 	}
 
@@ -204,29 +355,25 @@ internal sealed class MainForm : Form
 	{
 		using var dialog = new FolderBrowserDialog
 		{
-			Description = "Select the vanilla Steam RPG Maker 2003 installation folder.",
+			Description = "Select the vanilla Steam RPG Maker 2003 folder.",
 			ShowNewFolderButton = false,
 			SelectedPath = Directory.Exists(_sourcePath.Text) ? _sourcePath.Text : string.Empty
 		};
-		if (dialog.ShowDialog(this) == DialogResult.OK)
-		{
-			_sourcePath.Text = dialog.SelectedPath;
-			var result = RpgMaker2003InstallationValidator.Validate(dialog.SelectedPath);
-			if (result.IsValid && !_destinationManuallyChanged) { SetDefaultDestination(dialog.SelectedPath); }
-		}
+		if (dialog.ShowDialog(this) == DialogResult.OK) { _sourcePath.Text = dialog.SelectedPath; }
 	}
 
 	private void BrowseForDestination()
 	{
 		using var dialog = new FolderBrowserDialog
 		{
-			Description = "Select the parent folder for the separate RPG Maker 2003 - Arabic installation.",
+			Description = "Select the managed Arabic installation folder.",
 			ShowNewFolderButton = true,
 			SelectedPath = Directory.Exists(_destinationPath.Text) ? _destinationPath.Text : Path.GetDirectoryName(_destinationPath.Text) ?? string.Empty
 		};
 		if (dialog.ShowDialog(this) == DialogResult.OK)
 		{
-			_destinationPath.Text = Path.Combine(dialog.SelectedPath, "RPG Maker 2003 - Arabic");
+			_destinationPath.Text = dialog.SelectedPath;
+			_destinationManuallyChanged = true;
 		}
 	}
 
@@ -234,47 +381,75 @@ internal sealed class MainForm : Form
 	{
 		using var dialog = new FolderBrowserDialog
 		{
-			Description = "Select the extracted official Maniacs package folder.",
+			Description = "Select the root of an extracted supported Maniacs package.",
 			ShowNewFolderButton = false,
 			SelectedPath = Directory.Exists(_maniacsPackagePath.Text) ? _maniacsPackagePath.Text : string.Empty
 		};
 		if (dialog.ShowDialog(this) == DialogResult.OK) { _maniacsPackagePath.Text = dialog.SelectedPath; }
 	}
 
-	private void UpdateManiacsPackageInspection()
+	private ManiacsPackageSourceMode SelectedManiacsPackageSource =>
+		_maniacsPackageSource.SelectedItem is PackageSourceChoice choice
+			? choice.Mode
+			: ManiacsPackageSourceMode.UserSuppliedValidatedPackage;
+
+	private void UpdatePackageSourceControls()
+	{
+		var embedded = SelectedManiacsPackageSource == ManiacsPackageSourceMode.EmbeddedValidated241029;
+		_maniacsPackagePathLabel.Visible = !embedded;
+		_maniacsPackagePath.Visible = !embedded;
+		_browseManiacsPackageButton.Visible = !embedded;
+		if (embedded)
+		{
+			if (_embeddedManiacsPackageError is not null)
+			{
+				_maniacsPackageStatus.Text = "The bundled package failed validation: " + _embeddedManiacsPackageError;
+				_maniacsPackageStatus.ForeColor = Color.DarkOrange;
+				return;
+			}
+			if (_embeddedManiacsPackage is null || _maniacsModule is null)
+			{
+				_maniacsPackageStatus.Text = "The validated Maniacs package is unavailable in this setup build.";
+				_maniacsPackageStatus.ForeColor = Color.DarkOrange;
+				return;
+			}
+			UpdateManiacsPackageInspection(_embeddedManiacsPackage.DirectoryPath);
+			return;
+		}
+		UpdateManiacsPackageInspection();
+	}
+
+	private void UpdateManiacsPackageInspection() =>
+		UpdateManiacsPackageInspection(_maniacsPackagePath.Text.Trim());
+
+	private void UpdateManiacsPackageInspection(string packageDirectory)
 	{
 		if (_maniacsModule is null)
 		{
-			_maniacsPackageStatus.Text = "Maniacs package inspector is unavailable.";
+			_maniacsPackageStatus.Text = "Maniacs package validation is unavailable.";
 			_maniacsPackageStatus.ForeColor = Color.DarkOrange;
 			return;
 		}
-		if (string.IsNullOrWhiteSpace(_maniacsPackagePath.Text))
+		if (string.IsNullOrWhiteSpace(packageDirectory))
 		{
-			_maniacsPackageStatus.Text = "Select the extracted package to check its version, required files, layout, architecture, and Arabic Editor compatibility.";
+			_maniacsPackageStatus.Text = "Select an extracted package to check its exact version, files, architecture, and compatibility.";
 			_maniacsPackageStatus.ForeColor = Color.DimGray;
 			return;
 		}
 
 		try
 		{
-			var inspection = _maniacsModule.InspectPackage(_maniacsPackagePath.Text.Trim());
+			var inspection = _maniacsModule.InspectPackage(packageDirectory);
 			var lines = new List<string> { inspection.Summary };
-			if (!string.IsNullOrEmpty(inspection.TechnicalSummary)) { lines.Add(inspection.TechnicalSummary); }
-			if (inspection.Issues.Count != 0) { lines.Add(string.Join(" · ", inspection.Issues.Take(2))); }
 			if (inspection.Status == ManiacsPackageStatus.KnownSupportedBuild)
 			{
 				lines.Add(inspection.ArabicEditorValidated
-					? "Maniacs and English patch stages are ready; license acceptance is requested when installing."
-					: "This build is not validated with Arabic Editor support.");
+					? "The exact supported package is ready; license acceptance is required before installation."
+					: "Arabic Editor support is not validated for this build.");
 			}
+			if (inspection.Issues.Count != 0) { lines.Add(string.Join(" · ", inspection.Issues.Take(2))); }
 			_maniacsPackageStatus.Text = string.Join(Environment.NewLine, lines);
-			_maniacsPackageStatus.ForeColor = inspection.Status switch
-			{
-				ManiacsPackageStatus.KnownSupportedBuild when inspection.ArabicEditorValidated => Color.DarkGreen,
-				ManiacsPackageStatus.KnownSupportedBuild => Color.DarkOrange,
-				_ => Color.DarkOrange
-			};
+			_maniacsPackageStatus.ForeColor = inspection.IsKnownSupportedBuild && inspection.ArabicEditorValidated ? Color.DarkGreen : Color.DarkOrange;
 		}
 		catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
 		{
@@ -285,9 +460,17 @@ internal sealed class MainForm : Form
 
 	private void ToggleAdvancedOptions()
 	{
-		_advancedPanel.Visible = !_advancedPanel.Visible;
-		_advancedButton.Text = _advancedPanel.Visible ? "Advanced options  ▾" : "Advanced options  ▸";
-		ClientSize = new Size(760, _advancedPanel.Visible ? 720 : 550);
+		_advancedExpanded = !_advancedExpanded;
+		_advancedPanel.Visible = _advancedExpanded;
+		_advancedButton.Text = _advancedExpanded ? "Advanced options  ▾" : "Advanced options  ▸";
+		_destinationPath.ReadOnly = !_advancedExpanded;
+		_browseDestinationButton.Visible = _advancedExpanded;
+		RefreshSourceBrowseVisibility(RpgMaker2003InstallationValidator.Validate(_sourcePath.Text.Trim()).IsValid);
+		_destinationPath.Size = new Size(_advancedExpanded ? 554 : 660, 28);
+		ClientSize = new Size(710, _advancedExpanded ? 690 : 326);
+		_installButton.Location = new Point(560, _advancedExpanded ? 624 : 250);
+		_operationStatus.Location = new Point(24, _advancedExpanded ? 625 : 254);
+		_installationProgress.Location = new Point(24, _advancedExpanded ? 650 : 278);
 	}
 
 	private async Task InstallRecommendedAsync()
@@ -309,7 +492,7 @@ internal sealed class MainForm : Form
 		catch (SetupModulePlanException exception)
 		{
 			var details = exception.Blockers.Count == 0 ? exception.Message : exception.Message + Environment.NewLine + Environment.NewLine + string.Join(Environment.NewLine, exception.Blockers.Select(blocker => "• " + blocker));
-			_operationStatus.Text = "No files changed. Some recommended modules are not available yet.";
+			_operationStatus.Text = "No files changed. Some selected modules are not available.";
 			MessageBox.Show(this, details + Environment.NewLine + Environment.NewLine + "No files have been changed.", "Setup not ready", MessageBoxButtons.OK, MessageBoxIcon.Information);
 			return;
 		}
@@ -319,12 +502,27 @@ internal sealed class MainForm : Form
 		var maniacsLicenseAccepted = false;
 		if (usesManiacs)
 		{
-			if (_maniacsModule is null || string.IsNullOrWhiteSpace(_maniacsPackagePath.Text))
+			if (_maniacsModule is null)
 			{
-				MessageBox.Show(this, "Select the extracted official Maniacs package in Advanced options before installing.", "Select Maniacs package", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				MessageBox.Show(this, "Maniacs package validation is unavailable in this setup.", "Setup not ready", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 				return;
 			}
-			var inspection = _maniacsModule.InspectPackage(_maniacsPackagePath.Text.Trim());
+			maniacsPackageDirectory = SelectedManiacsPackageSource switch
+			{
+				ManiacsPackageSourceMode.EmbeddedValidated241029 => _embeddedManiacsPackage?.DirectoryPath,
+				_ => _maniacsPackagePath.Text.Trim()
+			};
+			if (string.IsNullOrWhiteSpace(maniacsPackageDirectory))
+			{
+				MessageBox.Show(this,
+					SelectedManiacsPackageSource == ManiacsPackageSourceMode.EmbeddedValidated241029
+						? "The embedded Maniacs package is unavailable. Choose an extracted supported package in Advanced options or rebuild Setup with a validated 241029 payload."
+						: "Choose an extracted supported Maniacs package in Advanced options before installing.",
+					"Select Maniacs package", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+
+			var inspection = _maniacsModule.InspectPackage(maniacsPackageDirectory);
 			var requiresArabicCompatibility = plan.OrderedModules.Any(module => module.Descriptor.Id == "arabic-editor");
 			if (!inspection.IsKnownSupportedBuild || (requiresArabicCompatibility && !inspection.ArabicEditorValidated) || inspection.PackageRoot is null)
 			{
@@ -349,38 +547,121 @@ internal sealed class MainForm : Form
 		var destination = _destinationPath.Text.Trim();
 		if (string.IsNullOrWhiteSpace(destination))
 		{
-			MessageBox.Show(this, "Choose a separate installation folder in Advanced options.", "Select destination", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+			MessageBox.Show(this, "Choose the Arabic installation folder shown above.", "Select destination", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 			return;
 		}
 		var replaceExisting = false;
 		if (Directory.Exists(destination))
 		{
 			var choice = MessageBox.Show(this,
-				$"The destination already exists. If installation succeeds, it will be kept as a rollback backup before the new setup is finalized.\n\n{destination}\n\nContinue?",
+				$"The Arabic installation folder already exists. Setup will stage and verify the new installation first, then replace only this folder's contents. The parent RPG Maker 2003 installation will remain untouched.\n\n{destination}\n\nContinue?",
 				"Confirm replacement", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
 			if (choice != DialogResult.Yes) { return; }
 			replaceExisting = true;
 		}
 
 		_installButton.Enabled = false;
+		SetInstallationControlsEnabled(false);
 		UseWaitCursor = true;
-		_operationStatus.Text = "Preparing the separate installation...";
+		ControlBox = false;
+		_installationProgress.Value = 0;
+		_installationProgress.Visible = true;
+		_operationStatus.ForeColor = Color.DarkSlateGray;
+		_operationStatus.Text = "Preparing installation...";
 		try
 		{
+			var progress = new Progress<InstallationProgress>(update =>
+			{
+				_operationStatus.Text = update.Stage;
+				_operationStatus.ForeColor = update.Failed ? Color.DarkRed : Color.DarkSlateGray;
+				_installationProgress.Value = Math.Clamp(update.Percent, 0, 100);
+			});
 			var result = await new InstallationCoordinator().InstallAsync(source, destination, plan, replaceExisting,
-				maniacsPackageDirectory, maniacsLicenseAccepted);
-			_operationStatus.Text = $"Done. Installed at {result.InstallationDirectory}";
-			MessageBox.Show(this, $"Setup completed.\n\n{result.InstallationDirectory}", "EasyRPG-Arabic Setup", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				maniacsPackageDirectory, maniacsLicenseAccepted, progress: progress);
+			_successfulInstallDirectory = result.InstallationDirectory;
+			ShowSuccess();
+			_successStatus.Text = "Opening installation folder...";
+			await OpenSuccessfulInstallationFolderAsync(closeAfterOpen: true);
 		}
 		catch (Exception exception)
 		{
-			_operationStatus.Text = "Setup failed. The source installation was not modified.";
-			MessageBox.Show(this, exception.Message, "Setup failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			var rollbackFailed = exception is SetupInstallException installException && installException.RollbackFailures.Count != 0;
+			_operationStatus.Text = rollbackFailed
+				? "Setup failed. Rollback reported an error; the vanilla installation was not modified."
+				: "Setup failed. Rollback completed; the vanilla installation was not modified.";
+			_operationStatus.ForeColor = Color.DarkRed;
+			var details = exception.Message;
+			if (exception is SetupInstallException { RollbackFailures.Count: > 0 } failedInstall)
+			{
+				details += Environment.NewLine + Environment.NewLine + "Rollback details:" + Environment.NewLine + string.Join(Environment.NewLine, failedInstall.RollbackFailures);
+			}
+			MessageBox.Show(this, details, "Setup failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
 		}
 		finally
 		{
 			UseWaitCursor = false;
-			_installButton.Enabled = true;
+			ControlBox = true;
+			if (!_successPanel.Visible) { SetInstallationControlsEnabled(true); }
 		}
+	}
+
+	private void ShowSuccess()
+	{
+		foreach (Control control in Controls)
+		{
+			if (!ReferenceEquals(control, _successPanel)) { control.Visible = false; }
+		}
+		ClientSize = new Size(600, 210);
+		_successPanel.Visible = true;
+		_successPanel.BringToFront();
+	}
+
+	private async Task OpenSuccessfulInstallationFolderAsync(bool closeAfterOpen)
+	{
+		if (string.IsNullOrWhiteSpace(_successfulInstallDirectory)) { return; }
+		try
+		{
+			if (!Directory.Exists(_successfulInstallDirectory)) { throw new DirectoryNotFoundException("The managed installation folder is missing."); }
+			_ = Process.Start(new ProcessStartInfo("explorer.exe")
+			{
+				UseShellExecute = false,
+				ArgumentList = { _successfulInstallDirectory }
+			}) ?? throw new InvalidOperationException("Windows Explorer could not open the installation folder.");
+			_successStatus.Text = "Opening installation folder...";
+			if (closeAfterOpen)
+			{
+				await Task.Delay(TimeSpan.FromMilliseconds(1500));
+				if (!IsDisposed) { Close(); }
+			}
+		}
+		catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
+		{
+			_successStatus.Text = "EasyRPG-Arabic is ready, but the installation folder could not be opened: " + exception.Message;
+		}
+	}
+
+	private void SetInstallationControlsEnabled(bool enabled)
+	{
+		_sourcePath.Enabled = enabled;
+		_browseSourceButton.Enabled = enabled;
+		_destinationPath.Enabled = enabled;
+		_browseDestinationButton.Enabled = enabled;
+		_advancedButton.Enabled = enabled;
+		_advancedPanel.Enabled = enabled;
+		_installButton.Enabled = enabled;
+	}
+
+	protected override void Dispose(bool disposing)
+	{
+		if (disposing)
+		{
+			try { _embeddedManiacsPackage?.Dispose(); } catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { /* Temporary package cleanup can be retried by the OS. */ }
+		}
+		base.Dispose(disposing);
+	}
+
+	private sealed record PackageSourceChoice(ManiacsPackageSourceMode Mode, string Label)
+	{
+		public override string ToString() => Label;
 	}
 }

@@ -54,19 +54,22 @@ if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) {
 
 $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
 if ($state.Version -ne 1) { throw 'The installation state has an unsupported version; no files were changed.' }
-$allowed = @('Plugin\EasyCmdTos.dll', 'Plugin\EasyRpgCommands.dll', 'Plugin\0Harmony.dll')
-$pluginDir = Join-Path $root 'Plugin'
+$allowedPluginFiles = @('Plugin\EasyCmdTos.dll', 'Plugin\EasyRpgCommands.dll', 'Plugin\0Harmony.dll')
 $unresolved = $false
 
 foreach ($entry in @($state.Files)) {
 	$relative = [string]$entry.Path
-	if ($allowed -notcontains $relative) {
+	$separator = [char][System.IO.Path]::DirectorySeparatorChar
+	$normalized = $relative.Replace('/', [string]$separator)
+	$isAllowedSupportFile = $normalized.StartsWith(('ArabicSupport' + $separator), [System.StringComparison]::OrdinalIgnoreCase)
+	$hasUnsafeSegment = [System.IO.Path]::IsPathRooted($normalized) -or $normalized.Split($separator) -contains '..' -or $normalized.Contains(':')
+	if ($hasUnsafeSegment -or (($allowedPluginFiles -notcontains $normalized) -and -not $isAllowedSupportFile)) {
 		Write-Warning "Skipped unexpected state entry: $relative"
 		$unresolved = $true
 		continue
 	}
-	$name = [System.IO.Path]::GetFileName($relative)
-	$target = Join-Path $pluginDir $name
+	$relative = $normalized
+	$target = Join-Path $root $relative
 	$currentHash = Get-FileHashOrEmpty $target
 	$installedHash = [string]$entry.InstalledHash
 	$originalHash = [string]$entry.OriginalHash
@@ -87,10 +90,10 @@ foreach ($entry in @($state.Files)) {
 			continue
 		}
 		Copy-Item -LiteralPath $originalBackup -Destination $target -Force
-		Write-Host "Restored Plugin\$name"
+		Write-Host "Restored $relative"
 	} elseif ($currentHash -and $installedHash -and $currentHash -eq $installedHash) {
 		Remove-Item -LiteralPath $target -Force
-		Write-Host "Removed Plugin\$name"
+		Write-Host "Removed $relative"
 	} elseif ($currentHash) {
 		Write-Warning "Preserved an unrecognized file: $target"
 		$unresolved = $true

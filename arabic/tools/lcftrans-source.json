@@ -1,0 +1,13 @@
+{
+  "tool": "LcfTrans",
+  "version": "1.1",
+  "architecture": "x86",
+  "artifact": "lcftrans.exe",
+  "source": "https://ci.easyrpg.org/job/tools-win32/369/artifact/bin/lcftrans.exe",
+  "sha256": "FF8C5C26CF4CA1FF3A837B2C67C1E458370F2340BFB57F4F7D652417AD239379",
+  "license": "MIT",
+  "licenseFile": "../licenses/LcfTrans-COPYING.txt",
+  "linkedLibrary": "liblcf",
+  "linkedLibraryLicense": "MIT",
+  "linkedLibraryLicenseFile": "../licenses/liblcf-COPYING.txt"
+}

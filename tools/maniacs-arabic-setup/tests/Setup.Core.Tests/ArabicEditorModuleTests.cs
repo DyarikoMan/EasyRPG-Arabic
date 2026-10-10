@@ -22,10 +22,18 @@ public sealed class ArabicEditorModuleTests
 		var verification = await module.VerifyAsync(context, result);
 
 		Assert.True(verification.Succeeded, verification.Message);
-		Assert.Equal(4, result.OwnedFiles.Count);
+		Assert.Equal(15, result.OwnedFiles.Count);
+		Assert.Contains(result.OwnedFiles, file => file.RelativePath == "ArabicSupport/tools/lcftrans.exe");
+		Assert.Contains(result.OwnedFiles, file => file.RelativePath == "ArabicSupport/template/Language/ar/Font/Font.ttf");
+		var bundledFont = await File.ReadAllBytesAsync(Path.Combine(stage, "ArabicSupport", "template", "Language", "ar", "Font", "Font.ttf"));
+		Assert.Equal(
+			"68B412A4D8443FE677DD37412BB44D117CADE607572B2CC9689177DA3934952F",
+			Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bundledFont)));
+		Assert.True(File.Exists(Path.Combine(stage, "ArabicSupport", "terminology", "canonical-terms.json")));
 		Assert.Equal("1256", ReadCodePage(Path.Combine(stage, "Plugin", "cmdcs.xml")));
 		await module.RollbackAsync(context, result);
 		Assert.Empty(Directory.EnumerateFiles(Path.Combine(stage, "Plugin")));
+		Assert.Empty(Directory.EnumerateFiles(Path.Combine(stage, "ArabicSupport"), "*", SearchOption.AllDirectories));
 	}
 
 	[Fact]
@@ -47,7 +55,7 @@ public sealed class ArabicEditorModuleTests
 		var uninstall = await module.UninstallAsync(context, applied.OwnedFiles);
 
 		Assert.Contains("Plugin/EasyCmdTos.dll", uninstall.PreservedFiles);
-		Assert.Equal(3, uninstall.RemovedFiles.Count);
+		Assert.Equal(14, uninstall.RemovedFiles.Count);
 		Assert.True(File.Exists(changedPath));
 		Assert.False(File.Exists(Path.Combine(stage, "Plugin", "cmdcs.xml")));
 	}

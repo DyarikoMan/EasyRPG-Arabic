@@ -7,6 +7,8 @@ namespace EasyRpgArabic.Setup.Core.Transactions;
 
 public sealed record SetupInstallResult(string InstallationDirectory, string? PreviousGenerationBackup, SetupState State);
 
+public sealed record InstallationProgress(string Stage, int Percent, bool Failed = false);
+
 public sealed class SetupInstallException : Exception
 {
 	public IReadOnlyList<string> RollbackFailures { get; }
@@ -35,8 +37,17 @@ public sealed class InstallationCoordinator
 		bool replaceExisting,
 		string? maniacsPackageDirectory,
 		bool maniacsLicenseAccepted,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken = default,
+		IProgress<InstallationProgress>? progress = null)
 	{
+		var lastPercent = 0;
+		void Report(string stage, int percent, bool failed = false)
+		{
+			lastPercent = Math.Clamp(percent, 0, 100);
+			progress?.Report(new InstallationProgress(stage, lastPercent, failed));
+		}
+
+		Report("Preparing installation...", 1);
 		var validation = RpgMaker2003InstallationValidator.Validate(sourceDirectory);
 		if (!validation.IsValid) { throw new InvalidOperationException(validation.Message); }
 		var fullDestination = Path.GetFullPath(destinationDirectory);
@@ -52,13 +63,19 @@ public sealed class InstallationCoordinator
 		}
 
 		await using var transaction = await InstallTransaction.CreateAsync(sourceDirectory, destinationDirectory, cancellationToken).ConfigureAwait(false);
-		var context = new SetupModuleContext(transaction.SourceDirectory, transaction.StagingDirectory, transaction.FinalDirectory, maniacsPackageDirectory, maniacsLicenseAccepted);
+		Report("Preparing installation...", 8);
+		var moduleCompletePercent = 8;
+		var context = new SetupModuleContext(transaction.SourceDirectory, transaction.StagingDirectory, transaction.FinalDirectory,
+			maniacsPackageDirectory, maniacsLicenseAccepted, stage => Report(stage, moduleCompletePercent));
 		var applied = new List<(ISetupModule Module, ModuleApplyResult Result)>();
 		try
 		{
-			foreach (var module in plan.OrderedModules)
+			for (var index = 0; index < plan.OrderedModules.Count; index++)
 			{
+				var module = plan.OrderedModules[index];
 				cancellationToken.ThrowIfCancellationRequested();
+				var targetPercent = 8 + (82 * (index + 1) / Math.Max(1, plan.OrderedModules.Count));
+				Report(GetModuleStage(module.Descriptor.Id), moduleCompletePercent);
 				var result = await module.ApplyAsync(context, cancellationToken).ConfigureAwait(false);
 				applied.Add((module, result));
 				var verification = await module.VerifyAsync(context, result, cancellationToken).ConfigureAwait(false);
@@ -66,8 +83,11 @@ public sealed class InstallationCoordinator
 				{
 					throw new InvalidOperationException($"{module.Descriptor.Name} verification failed: {verification.Message}");
 				}
+				moduleCompletePercent = targetPercent;
+				Report(GetModuleStage(module.Descriptor.Id), moduleCompletePercent);
 			}
 
+			Report("Finalizing installation...", 94);
 			var executableHash = await ComputeSha256Async(Path.Combine(sourceDirectory, "rpg2003.exe"), cancellationToken).ConfigureAwait(false);
 			var state = new SetupState
 			{
@@ -87,10 +107,12 @@ public sealed class InstallationCoordinator
 			};
 			await SetupStateStore.WriteAsync(transaction.StagingDirectory, state, cancellationToken).ConfigureAwait(false);
 			await transaction.CommitAsync(replaceExisting, cancellationToken).ConfigureAwait(false);
+			Report("Installation complete.", 100);
 			return new SetupInstallResult(transaction.FinalDirectory, transaction.PreviousGenerationBackup, state);
 		}
 		catch (Exception exception)
 		{
+			Report("Setup failed; rolling back...", lastPercent, failed: true);
 			var rollbackFailures = new List<string>();
 			foreach (var item in applied.AsEnumerable().Reverse())
 			{
@@ -102,6 +124,15 @@ public sealed class InstallationCoordinator
 			throw new SetupInstallException($"Installation failed: {exception.Message}", exception, rollbackFailures);
 		}
 	}
+
+	private static string GetModuleStage(string moduleId) => moduleId switch
+	{
+		"maniacs" => "Installing Maniacs...",
+		"maniacs-english" => "Installing Maniacs English...",
+		"arabic-editor" => "Installing Arabic Editor support...",
+		"easyrpg-arabic" => "Installing EasyRPG-Arabic...",
+		_ => "Installing " + moduleId + "..."
+	};
 
 	private static string ComputeModuleFingerprint(SetupModuleDescriptor descriptor, ModuleApplyResult result)
 	{

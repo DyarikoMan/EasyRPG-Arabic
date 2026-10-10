@@ -11,11 +11,11 @@ public sealed class EasyRpgArabicSetupModuleTests
 	{
 		var payload = EasyRpgArabicPlayerPayload.LoadEmbedded();
 
-		Assert.Equal("fc479ae90f8b47217545ee94d4c754f6c0984845", payload.BuildId);
+		Assert.Equal("3aff8a993a2f0ab37a579313d6267830f07b9e1c", payload.BuildId);
 		Assert.Equal("0.8.1", payload.Version);
 		Assert.Equal("x64", payload.Architecture);
 		Assert.Equal(14_567_424, payload.Size);
-		Assert.Equal("2B3EC3395FB76F970368D0F82F20399315CE2F7C20933DEA6266541E5004DF51", payload.Sha256);
+		Assert.Equal("A5885AA58A9D59A7BA4EFA8DF8611551E15AD53D4FFFD109D2979D1196651AF5", payload.Sha256);
 		Assert.Equal("Player.exe", payload.InstalledPath);
 	}
 

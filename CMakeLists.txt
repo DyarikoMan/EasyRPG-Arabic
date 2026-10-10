@@ -5,6 +5,24 @@ project(EasyRPG_Player VERSION 0.8.1
 	HOMEPAGE_URL "https://easyrpg.org"
 	LANGUAGES CXX)
 
+# Keep liblcf span contract messages independent of the checkout path.
+if(MSVC)
+	include(CheckCXXCompilerFlag)
+	file(TO_NATIVE_PATH "${CMAKE_SOURCE_DIR}/lib/liblcf/src/lcf/third_party/span.h" PLAYER_SOURCE_PATH_PREFIX)
+	set(PLAYER_SAVED_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+	set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} /experimental:deterministic /WX")
+	check_cxx_compiler_flag("/pathmap:${PLAYER_SOURCE_PATH_PREFIX}=./" PLAYER_MSVC_HAS_PATHMAP)
+	set(CMAKE_REQUIRED_FLAGS "${PLAYER_SAVED_REQUIRED_FLAGS}")
+	if(PLAYER_MSVC_HAS_PATHMAP)
+		set(PLAYER_MSVC_SOURCE_PATHMAP_OPTIONS
+			"$<$<CONFIG:Release>:/experimental:deterministic>"
+			"$<$<CONFIG:Release>:/pathmap:${PLAYER_SOURCE_PATH_PREFIX}=span.h>"
+		)
+	else()
+		message(WARNING "MSVC source path remapping is unavailable; release binaries may contain local paths")
+	endif()
+endif()
+
 # Extra CMake Module files
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/builds/cmake/Modules")
 include(CMakeDependentOption)
@@ -497,6 +515,28 @@ add_library(${PROJECT_NAME} OBJECT
 
 # Include directories
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# MSVC embeds the source filename in the span contract messages from these
+# translation units. Limit deterministic path mapping to those files so the
+# rest of the Player's compiled output is unaffected.
+if(PLAYER_MSVC_HAS_PATHMAP)
+	set(PLAYER_SPAN_CONTRACT_SOURCES
+		attribute.cpp
+		dynrpg_easyrpg.cpp
+		dynrpg_textplugin.cpp
+		game_actor.cpp
+		game_battlealgorithm.cpp
+		game_dynrpg.cpp
+		game_interpreter.cpp
+		game_interpreter_battle.cpp
+		game_interpreter_shared.cpp
+		game_variables.cpp
+	)
+	foreach(PLAYER_SPAN_SOURCE IN LISTS PLAYER_SPAN_CONTRACT_SOURCES)
+		set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/${PLAYER_SPAN_SOURCE}"
+			APPEND PROPERTY COMPILE_OPTIONS ${PLAYER_MSVC_SOURCE_PATHMAP_OPTIONS})
+	endforeach()
+endif()
 
 # Optimize floating point math functions into intrinsics and don't check or set errno (i.e. sqrt(-1))
 if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
@@ -1221,6 +1261,9 @@ if(PLAYER_BUILD_EXECUTABLE AND ${PLAYER_TARGET_PLATFORM} MATCHES "^SDL.*$" AND N
 	endif()
 
 	target_link_libraries(${EXE_NAME} ${PROJECT_NAME})
+	if(MSVC)
+		target_link_options(${EXE_NAME} PRIVATE "$<$<CONFIG:Release>:/Brepro>")
+	endif()
 
 	if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 		# Do not confuse this with our own -DUSE_SDL

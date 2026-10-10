@@ -4,13 +4,21 @@
 
 The target user flow detects a vanilla Steam RPG Maker 2003 installation,
 recommends the supported components, and lets the user install them with one
-click. The result lives in a separate managed folder such as
-`RPG Maker 2003 - Arabic`; the vanilla Steam folder is only a read-only source.
+click. The default result lives in
+`<vanilla RPG Maker 2003>\Arabic`. That managed child folder is the only source
+subtree created or replaced; source validation and recipe copy/fingerprint
+operations use explicit vanilla-root files and exclude `Arabic`.
 
-The setup requires an extracted official Maniacs package supplied by the user;
-it does not bundle or redistribute Maniacs files. The installer displays that
-package's `LICENSE.txt` and requires explicit acceptance before applying its
-modules. It does not launch `utility.exe` or `patch.exe`.
+The public setup build defaults to an extracted official Maniacs package
+supplied by the user and does not bundle Maniacs files. A private/internal
+build may select `EmbeddedValidated241029`; its build step accepts only a local
+package that matches the exact registered 241029 recipe, compatibility record,
+and architecture checks, then embeds only recipe-fingerprinted package files.
+A public build cannot embed Maniacs unless redistribution permission is
+explicitly confirmed. Neither build bundles Steam RPG Maker files. The
+installer displays the selected package's `LICENSE.txt` and requires explicit
+acceptance before applying its modules. It does not launch `utility.exe` or
+`patch.exe`.
 
 ## Repository layout
 
@@ -18,7 +26,8 @@ modules. It does not launch `utility.exe` or `patch.exe`.
 tools/maniacs-arabic-setup/
   README.md
   ARCHITECTURE.md
-  packaging/publish.ps1
+  packaging/publish.ps1            # public by default; private embedding is explicit
+  packaging/create-validated-maniacs-archive.ps1
   src/
     Setup.App/                 # Windows GUI; packaged as one no-console EXE
     Setup.Core/                # detection, planning, state, transaction engine
@@ -183,7 +192,7 @@ Store a versioned JSON record under the managed installation, for example
     "path": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\RPG Maker 2003",
     "fingerprint": { "rpg2003.exe": "sha256:<digest>" }
   },
-  "installPath": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\RPG Maker 2003 - Arabic",
+  "installPath": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\RPG Maker 2003\\Arabic",
   "modules": [
     {
       "id": "arabic-editor",
@@ -208,11 +217,24 @@ version display, and safe module-level removal.
 
 ## One-click and packaging constraints
 
-The current UI is a WinForms Windows GUI published as the self-contained
-`dist/EasyRPG-Arabic-Setup.exe` for Windows x64. It has no console subsystem,
-detects Steam installs, offers Browse, shows the recommended modules, and has
-an expandable **Advanced options** destination field. It does not require
-Visual Studio, CMake, Git, BAT use, or manual DLL copying from users.
+The UI is a WinForms Windows GUI published as a self-contained Windows x64
+executable. The normal screen shows the detected RPG Maker 2003 source, the
+automatically derived `Arabic` destination and one Install action. Advanced
+options contain path changes, the public Maniacs package source, and per-module
+details. The private embedded-package build hides the package picker.
+Installation progress follows verified transaction stages. On success the
+ready screen opens the managed installation folder in Windows Explorer and
+closes shortly afterward; it never launches `rpg2003.exe`.
+
+`packaging/publish.ps1` defaults to the public
+`UserSuppliedValidatedPackage` mode and writes `dist/EasyRPG-Arabic-Setup.exe`.
+Its explicit `PrivateInternal` mode embeds the local validated 241029 payload
+and writes separately to `builds/private-internal`. A public build selecting
+`EmbeddedValidated241029` must pass the explicit redistribution-permission
+confirmation switch. The private package is never copied into `dist` by
+default. Neither build includes Steam RPG Maker 2003 files. The installer does
+not require Visual Studio, CMake, Git, BAT use, or manual DLL copying from
+users.
 
 All four modules are ready when the exact user-supplied 241029 package is
 selected and accepted. EasyRPG-Arabic is bundled from this repository's Release

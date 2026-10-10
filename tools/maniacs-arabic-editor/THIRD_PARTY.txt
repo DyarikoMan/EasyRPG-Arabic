@@ -22,3 +22,17 @@ third_party/minhook/LICENSE.txt in the source tree.
 
 The Maniacs installation supplies cmdcs.dll, cmdTos.dll, and its Plugin folder.
 These Maniacs-owned files are not included in this package.
+
+LcfTrans 1.1, EasyRPG Tools continuous build 369
+The Windows x86 binary is bundled at ArabicSupport/tools/lcftrans.exe.
+SHA-256: FF8C5C26CF4CA1FF3A837B2C67C1E458370F2340BFB57F4F7D652417AD239379
+The MIT notice for LcfTrans is in ArabicSupport/licenses/LcfTrans-COPYING.txt.
+The MIT notice for linked liblcf is in ArabicSupport/licenses/liblcf-COPYING.txt.
+The source build is available at https://ci.easyrpg.org/job/tools-win32/369/artifact/bin/lcftrans.exe.
+
+Arabic PixelSmall
+Created by BOU33OU. The unchanged historical TTF is included at
+ArabicSupport/template/Language/ar/Font/Font.ttf.
+SHA-256: 68B412A4D8443FE677DD37412BB44D117CADE607572B2CC9689177DA3934952F
+The copyright holder licenses this repository copy under SIL OFL 1.1. See
+ArabicSupport/template/Language/ar/Font/OFL.txt, NOTICE.txt, and SOURCE.txt.

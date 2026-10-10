@@ -1,0 +1,13 @@
+Arabic PixelSmall, created by BOU33OU using PixelForge.
+
+Original project listing:
+https://modrinth.com/resourcepack/arabic-font
+
+Historical source file SHA-256:
+68B412A4D8443FE677DD37412BB44D117CADE607572B2CC9689177DA3934952F
+
+This repository redistributes the same unchanged TTF under SIL Open Font
+License 1.1 with permission from the original creator and copyright holder.
+The TTF's name table retains the personal-use terms from its earlier release;
+this later OFL grant applies to this repository copy. No glyph outlines were
+modified. See NOTICE.txt and OFL.txt.
