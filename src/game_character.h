@@ -932,6 +932,7 @@ protected:
 	void SanitizeMoveRoute(std::string_view name, const lcf::rpg::MoveRoute& mr, int32_t& idx, std::string_view chunk_name);
 	void Update();
 	virtual void UpdateAnimation();
+	virtual int GetAnimationSpeed() const;
 	virtual void UpdateNextMovementAction() = 0;
 	virtual void UpdateMovement(int amount);
 

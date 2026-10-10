@@ -220,6 +220,264 @@ TEST_CASE("Pixel movement scales speed levels at half the tile movement amount")
 	}
 }
 
+TEST_CASE("RunWithShift is ignored when pixel movement is disabled") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, false, true };
+	const MockGame mg(map_id);
+	auto& ch = *mg.GetPlayer();
+	ch.SetX(8);
+	ch.SetY(8);
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::RIGHT;
+	Input::press_time[Input::SHIFT] = 1;
+	Rand::LockGuard lk(INT32_MAX);
+
+	ForceUpdate(ch);
+
+	CHECK(ch.GetX() == 9);
+	CHECK(ch.GetY() == 8);
+	CHECK(ch.GetRemainingStep() == 224);
+	CHECK(ch.GetSpriteX() == 8 * SCREEN_TILE_SIZE + 32);
+}
+
+TEST_CASE("RunWithShift=false keeps pixel movement at walk speed even while Shift is held") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, false };
+	const MockGame mg(map_id);
+	auto& ch = *mg.GetPlayer();
+	ch.SetX(8);
+	ch.SetY(8);
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::RIGHT;
+	Input::press_time[Input::SHIFT] = 1;
+
+	ForceUpdate(ch);
+
+	CHECK(ch.GetPixelX() == 8 * SCREEN_TILE_SIZE + 16);
+	CHECK(ch.GetPixelY() == 8 * SCREEN_TILE_SIZE);
+}
+
+TEST_CASE("RunWithShift doubles pixel walking and releasing Shift restores walk speed") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, true };
+	const MockGame mg(map_id);
+	auto& ch = *mg.GetPlayer();
+	ch.SetX(8);
+	ch.SetY(8);
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::RIGHT;
+
+	ForceUpdate(ch);
+	CHECK(ch.GetPixelX() == 8 * SCREEN_TILE_SIZE + 16);
+
+	Input::press_time[Input::SHIFT] = 1;
+	ForceUpdate(ch);
+	CHECK(ch.GetPixelX() == 8 * SCREEN_TILE_SIZE + 48);
+
+	Input::press_time[Input::SHIFT] = 0;
+	ForceUpdate(ch);
+	CHECK(ch.GetPixelX() == 8 * SCREEN_TILE_SIZE + 64);
+}
+
+TEST_CASE("RunWithShift still collides with walls and solid events at run speed") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, true };
+
+	SUBCASE("wall") {
+		const MockGame mg(map_id);
+		auto& ch = *mg.GetPlayer();
+		ch.SetX(8);
+		ch.SetY(8);
+		Game_Map::GetMapDataDown()[8 * Game_Map::GetTilesX() + 9] = BLOCK_E + 1;
+		Input::ResetKeys();
+		Input::dir4 = Input::Direction::RIGHT;
+		Input::press_time[Input::SHIFT] = 1;
+		Rand::LockGuard lk(INT32_MAX);
+
+		for (int i = 0; i < 4; ++i) {
+			ForceUpdate(ch);
+		}
+
+		CHECK(ch.GetPixelX() == 8 * SCREEN_TILE_SIZE + SCREEN_TILE_SIZE / 4);
+		CHECK(ch.GetX() == 8);
+		CHECK(Main_Data::game_party->GetSteps() == 0);
+	}
+
+	SUBCASE("solid event") {
+		const MockGame mg(map_id);
+		auto& ch = *mg.GetPlayer();
+		ch.SetX(8);
+		ch.SetY(8);
+		auto* event = Game_Map::GetEvent(1);
+		REQUIRE(event);
+		event->MoveTo(1, 9, 8);
+		event->SetLayer(lcf::rpg::EventPage::Layers_same);
+		event->SetThrough(false);
+		Input::ResetKeys();
+		Input::dir4 = Input::Direction::RIGHT;
+		Input::press_time[Input::SHIFT] = 1;
+		Rand::LockGuard lk(INT32_MAX);
+
+		for (int i = 0; i < 4; ++i) {
+			ForceUpdate(ch);
+		}
+
+		CHECK(ch.GetPixelX() == 8 * SCREEN_TILE_SIZE + SCREEN_TILE_SIZE / 4);
+		CHECK(ch.GetX() == 8);
+		CHECK(Main_Data::game_party->GetSteps() == 0);
+	}
+}
+
+TEST_CASE("Diagonal RunWithShift doubles both axes with eight-direction movement") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { true, true, true };
+	const MockGame mg(map_id);
+	auto& ch = *mg.GetPlayer();
+	ch.SetX(8);
+	ch.SetY(8);
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::DOWN;
+	Input::dir8 = Input::Direction::UPRIGHT;
+	Input::press_time[Input::SHIFT] = 1;
+
+	ForceUpdate(ch);
+
+	CHECK(ch.GetPixelX() == 8 * SCREEN_TILE_SIZE + 32);
+	CHECK(ch.GetPixelY() == 8 * SCREEN_TILE_SIZE - 32);
+	CHECK(ch.GetDirection() == Game_Character::UpRight);
+}
+
+TEST_CASE("Pixel walking animation is slower than the speed-4 tile cadence") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, true };
+	const MockGame mg(map_id);
+	auto& ch = *mg.GetPlayer();
+	ch.SetX(8);
+	ch.SetY(8);
+	ch.SetMoveSpeed(4);
+	ch.SetAnimationType(lcf::rpg::EventPage::AnimType_non_continuous);
+	ch.SetAnimCount(0);
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::RIGHT;
+	Rand::LockGuard lk(INT32_MAX);
+	const auto starting_frame = ch.GetAnimFrame();
+
+	for (int i = 0; i < 8; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(ch.GetAnimFrame() == starting_frame);
+
+	ForceUpdate(ch);
+	CHECK(ch.GetAnimFrame() == starting_frame);
+	ForceUpdate(ch);
+	CHECK(ch.GetAnimFrame() != starting_frame);
+}
+
+TEST_CASE("Pixel running animation is faster than walking animation") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, true };
+	const MockGame mg(map_id);
+	auto& ch = *mg.GetPlayer();
+	ch.SetX(8);
+	ch.SetY(8);
+	ch.SetMoveSpeed(4);
+	ch.SetAnimationType(lcf::rpg::EventPage::AnimType_non_continuous);
+	ch.SetAnimCount(0);
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::RIGHT;
+	Input::press_time[Input::SHIFT] = 1;
+	Rand::LockGuard lk(INT32_MAX);
+	const auto starting_frame = ch.GetAnimFrame();
+
+	for (int i = 0; i < 4; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(ch.GetAnimFrame() == starting_frame);
+
+	ForceUpdate(ch);
+	CHECK(ch.GetAnimFrame() != starting_frame);
+}
+
+TEST_CASE("Releasing Shift restores pixel walking animation cadence immediately") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, true };
+	const MockGame mg(map_id);
+	auto& ch = *mg.GetPlayer();
+	ch.SetX(8);
+	ch.SetY(8);
+	ch.SetMoveSpeed(4);
+	ch.SetAnimationType(lcf::rpg::EventPage::AnimType_non_continuous);
+	ch.SetAnimCount(0);
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::RIGHT;
+	Input::press_time[Input::SHIFT] = 1;
+	Rand::LockGuard lk(INT32_MAX);
+	const auto starting_frame = ch.GetAnimFrame();
+
+	for (int i = 0; i < 4; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(ch.GetAnimFrame() == starting_frame);
+
+	Input::press_time[Input::SHIFT] = 0;
+	ForceUpdate(ch);
+	CHECK(ch.GetAnimFrame() == starting_frame);
+	ForceUpdate(ch);
+	CHECK(ch.GetAnimFrame() != starting_frame);
+}
+
+TEST_CASE("Pixel movement animation changes do not affect tile movement or NPC animation") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, false, true };
+
+	SUBCASE("player tile movement keeps the original speed-4 cadence") {
+		const MockGame mg(map_id);
+		auto& ch = *mg.GetPlayer();
+		ch.SetX(8);
+		ch.SetY(8);
+		ch.SetMoveSpeed(4);
+		ch.SetAnimationType(lcf::rpg::EventPage::AnimType_non_continuous);
+		ch.SetAnimCount(0);
+		Input::ResetKeys();
+		Input::dir4 = Input::Direction::RIGHT;
+		Input::press_time[Input::SHIFT] = 1;
+		Rand::LockGuard lk(INT32_MAX);
+		const auto starting_frame = ch.GetAnimFrame();
+
+		for (int i = 0; i < 5; ++i) {
+			ForceUpdate(ch);
+		}
+		CHECK(ch.GetAnimFrame() == starting_frame);
+
+		ForceUpdate(ch);
+		CHECK(ch.GetAnimFrame() != starting_frame);
+	}
+
+	SUBCASE("NPC animation keeps the original speed-4 cadence") {
+		Player::project_settings = { false, true, true };
+		const MockGame mg(map_id);
+		auto* event = Game_Map::GetEvent(1);
+		REQUIRE(event);
+		event->SetX(4);
+		event->SetY(4);
+		event->SetMoveSpeed(4);
+		event->SetAnimationType(lcf::rpg::EventPage::AnimType_non_continuous);
+		event->SetAnimCount(0);
+		REQUIRE(event->Move(Game_Character::Right));
+		Input::ResetKeys();
+		Input::press_time[Input::SHIFT] = 1;
+		const auto starting_frame = event->GetAnimFrame();
+
+		for (int i = 0; i < 5; ++i) {
+			ForceUpdate(*event);
+		}
+		CHECK(event->GetAnimFrame() == starting_frame);
+
+		ForceUpdate(*event);
+		CHECK(event->GetAnimFrame() != starting_frame);
+	}
+}
+
 TEST_CASE("Pixel movement holds, resumes, and reverses from fractional positions") {
 	ProjectSettingsGuard settings_guard;
 	Player::project_settings = { false, true };
