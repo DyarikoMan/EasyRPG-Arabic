@@ -43,11 +43,20 @@ public:
 	/** @return save game data */
 	lcf::rpg::SavePartyLocation GetSaveData() const;
 
+	/** Set logical tile coordinates and reset the runtime sub-tile position. */
+	void SetX(int x);
+	void SetY(int y);
+	/** @return the player world position in SCREEN_TILE_SIZE units. */
+	int GetPixelX() const;
+	int GetPixelY() const;
+
 	/**
 	 * Implementation of abstract methods
 	 */
 	/** @{ */
 	Drawable::Z_t GetScreenZ(int x_offset, int y_offset) const override;
+	int GetSpriteX() const override;
+	int GetSpriteY() const override;
 	bool IsVisible() const override;
 	bool MakeWay(int from_x, int from_y, int to_x, int to_y) override;
 	void UpdateNextMovementAction() override;
@@ -159,7 +168,13 @@ public:
 private:
 	using TriggerSet = lcf::FlagSet<lcf::rpg::EventPage::Trigger>;
 
-	void UpdateScroll(int amount, bool was_jumping);
+	void UpdateAnimation() override;
+	void UpdateScroll(int amount, bool was_jumping, int pixel_amount_x = -1, int pixel_amount_y = -1);
+	void SyncPixelPositionToTile();
+	bool IsUsingPixelMovement() const;
+	bool UpdatePixelMovement(int dir);
+	void ApplyMoveStepEffects();
+	void CountPlayerStep();
 	void UpdatePan();
 	void UpdateEncounterSteps();
 	bool CheckActionEvent();
@@ -172,6 +187,13 @@ private:
 
 	TeleportTarget teleport_target;
 	int last_encounter_idx = 0;
+	int pixel_x = 0;
+	int pixel_y = 0;
+	int pixel_origin_x = 0;
+	int pixel_origin_y = 0;
+	int pixel_collision_blocked_x_dir = 0;
+	int pixel_collision_blocked_y_dir = 0;
+	bool pixel_moved_this_frame = false;
 };
 
 inline bool Game_Player::IsPendingTeleport() const {

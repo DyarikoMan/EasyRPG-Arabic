@@ -463,6 +463,26 @@ bool Game_Character::MakeWay(int from_x, int from_y, int to_x, int to_y) {
 	return Game_Map::MakeWay(*this, from_x, from_y, to_x, to_y);
 }
 
+bool Game_Character::CheckMoveInDirection(int dir) {
+	const auto x = GetX();
+	const auto y = GetY();
+	const auto dx = GetDxFromDirection(dir);
+	const auto dy = GetDyFromDirection(dir);
+
+	if (dx && dy) {
+		// For diagonal movement, RPG_RT tries vert -> horiz and if that fails, then horiz -> vert.
+		return (MakeWay(x, y, x, y + dy) && MakeWay(x, y + dy, x + dx, y + dy))
+			|| (MakeWay(x, y, x + dx, y) && MakeWay(x + dx, y, x + dx, y + dy));
+	}
+	if (dx) {
+		return MakeWay(x, y, x + dx, y);
+	}
+	if (dy) {
+		return MakeWay(x, y, x, y + dy);
+	}
+	return false;
+}
+
 
 bool Game_Character::CheckWay(int from_x, int from_y, int to_x, int to_y) {
 	return Game_Map::CheckWay(*this, from_x, from_y, to_x, to_y);
@@ -487,20 +507,12 @@ bool Game_Character::Move(int dir) {
 	SetDirection(dir);
 	UpdateFacing();
 
-	const auto x = GetX();
-	const auto y = GetY();
 	const auto dx = GetDxFromDirection(dir);
 	const auto dy = GetDyFromDirection(dir);
+	const auto x = GetX();
+	const auto y = GetY();
 
-	if (dx && dy) {
-		// For diagonal movement, RPG_RT trys vert -> horiz and if that fails, then horiz -> vert.
-		move_success = (MakeWay(x, y, x, y + dy) && MakeWay(x, y + dy, x + dx, y + dy))
-					|| (MakeWay(x, y, x + dx, y) && MakeWay(x + dx, y, x + dx, y + dy));
-	} else if (dx) {
-		move_success = MakeWay(x, y, x + dx, y);
-	} else if (dy) {
-		move_success = MakeWay(x, y, x, y + dy);
-	}
+	move_success = CheckMoveInDirection(dir);
 
 	if (!move_success) {
 		return false;

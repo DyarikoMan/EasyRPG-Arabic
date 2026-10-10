@@ -48,6 +48,7 @@ Game_Player::Game_Player(): Game_PlayerBase(Player)
 	SetDirection(lcf::rpg::EventPage::Direction_down);
 	SetMoveSpeed(4);
 	SetAnimationType(lcf::rpg::EventPage::AnimType_non_continuous);
+	SyncPixelPositionToTile();
 }
 
 void Game_Player::SetSaveData(lcf::rpg::SavePartyLocation save)
@@ -55,6 +56,7 @@ void Game_Player::SetSaveData(lcf::rpg::SavePartyLocation save)
 	*data() = std::move(save);
 
 	SanitizeData("Party");
+	SyncPixelPositionToTile();
 
 	// RPG_RT will always reset the hero graphic on loading a save, even if
 	// a move route changed the graphic.
@@ -63,6 +65,65 @@ void Game_Player::SetSaveData(lcf::rpg::SavePartyLocation save)
 
 lcf::rpg::SavePartyLocation Game_Player::GetSaveData() const {
 	return *data();
+}
+
+void Game_Player::SetX(int x) {
+	Game_Character::SetX(x);
+	SyncPixelPositionToTile();
+}
+
+void Game_Player::SetY(int y) {
+	Game_Character::SetY(y);
+	SyncPixelPositionToTile();
+}
+
+int Game_Player::GetPixelX() const {
+	return pixel_x;
+}
+
+int Game_Player::GetPixelY() const {
+	return pixel_y;
+}
+
+void Game_Player::SyncPixelPositionToTile() {
+	pixel_x = GetX() * SCREEN_TILE_SIZE;
+	pixel_y = GetY() * SCREEN_TILE_SIZE;
+	pixel_origin_x = pixel_x;
+	pixel_origin_y = pixel_y;
+	pixel_collision_blocked_x_dir = 0;
+	pixel_collision_blocked_y_dir = 0;
+}
+
+bool Game_Player::IsUsingPixelMovement() const {
+	return Player::project_settings.pixel_movement && !IsAboard() && !IsBoardingOrUnboarding();
+}
+
+int Game_Player::GetSpriteX() const {
+	if (IsUsingPixelMovement() && !IsMoving() && !IsJumping() && !IsMoveRouteOverwritten()) {
+		return pixel_x;
+	}
+	return Game_Character::GetSpriteX();
+}
+
+int Game_Player::GetSpriteY() const {
+	if (IsUsingPixelMovement() && !IsMoving() && !IsJumping() && !IsMoveRouteOverwritten()) {
+		return pixel_y;
+	}
+	return Game_Character::GetSpriteY();
+}
+
+void Game_Player::UpdateAnimation() {
+	if (!pixel_moved_this_frame) {
+		Game_Character::UpdateAnimation();
+		return;
+	}
+
+	// Pixel motion has no remaining_step animation state. Present a moving stop count
+	// to the existing animation code without changing the player's actual stop count.
+	const auto stop_count = GetStopCount();
+	SetStopCount(0);
+	Game_Character::UpdateAnimation();
+	SetStopCount(stop_count);
 }
 
 Drawable::Z_t Game_Player::GetScreenZ(int x_offset, int y_offset) const {
@@ -130,6 +191,7 @@ void Game_Player::MoveTo(int map_id, int x, int y) {
 	const auto map_changed = (GetMapId() != map_id);
 
 	Game_Character::MoveTo(map_id, x, y);
+	SyncPixelPositionToTile();
 	SetTotalEncounterRate(0);
 	SetMenuCalling(false);
 
@@ -186,7 +248,7 @@ void Game_Player::MoveRouteSetSpriteGraphic(std::string sprite_name, int index) 
 	}
 }
 
-void Game_Player::UpdateScroll(int amount, bool was_jumping) {
+void Game_Player::UpdateScroll(int amount, bool was_jumping, int pixel_amount_x, int pixel_amount_y) {
 	if (IsPanLocked()) {
 		return;
 	}
@@ -211,8 +273,10 @@ void Game_Player::UpdateScroll(int amount, bool was_jumping) {
 		}
 	}
 
-	auto dx = (GetX() * SCREEN_TILE_SIZE) - Game_Map::GetPositionX() - GetPanX() + screen_offset_x;
-	auto dy = (GetY() * SCREEN_TILE_SIZE) - Game_Map::GetPositionY() - GetPanY() + screen_offset_y;
+	const auto player_x = Player::project_settings.pixel_movement && !IsAboard() ? GetSpriteX() : GetX() * SCREEN_TILE_SIZE;
+	const auto player_y = Player::project_settings.pixel_movement && !IsAboard() ? GetSpriteY() : GetY() * SCREEN_TILE_SIZE;
+	auto dx = player_x - Game_Map::GetPositionX() - GetPanX() + screen_offset_x;
+	auto dy = player_y - Game_Map::GetPositionY() - GetPanY() + screen_offset_y;
 
 	dx = Utils::PositiveModulo(dx + map_width / 2, map_width) - map_width / 2;
 	dy = Utils::PositiveModulo(dy + map_height / 2, map_height) - map_height / 2;
@@ -255,7 +319,9 @@ void Game_Player::UpdateScroll(int amount, bool was_jumping) {
 		move_sx = sx;
 	}
 
-	Game_Map::Scroll(move_sx * amount, move_sy * amount);
+	const auto scroll_x = pixel_amount_x >= 0 ? pixel_amount_x : amount;
+	const auto scroll_y = pixel_amount_y >= 0 ? pixel_amount_y : amount;
+	Game_Map::Scroll(move_sx * scroll_x, move_sy * scroll_y);
 }
 
 bool Game_Player::UpdateAirship() {
@@ -357,6 +423,26 @@ void Game_Player::UpdateNextMovementAction() {
 				break;
 		}
 	}
+
+	if (IsUsingPixelMovement() && !IsJumping() && !IsMoveRouteOverwritten()) {
+		bool moved = false;
+		if (move_dir >= 0) {
+			SetThrough((Player::debug_flag && Input::IsPressed(Input::DEBUG_THROUGH)) || data()->move_route_through);
+			moved = UpdatePixelMovement(move_dir);
+			ResetThrough();
+		}
+
+		if (!moved && Input::IsTriggered(Input::DECISION)) {
+			if (!GetOnOffVehicle()) {
+				CheckActionEvent();
+			} else if (!IsStopping()) {
+				// Boarding and disembarking still use the existing tile movement path.
+				CountPlayerStep();
+			}
+		}
+		return;
+	}
+
 	if (move_dir >= 0) {
 		SetThrough((Player::debug_flag && Input::IsPressed(Input::DEBUG_THROUGH)) || data()->move_route_through);
 		Move(move_dir);
@@ -377,17 +463,17 @@ void Game_Player::UpdateNextMovementAction() {
 		return;
 	}
 
-	Main_Data::game_party->IncSteps();
-	if (Main_Data::game_party->ApplyStateDamage()) {
-		Main_Data::game_screen->FlashMapStepDamage();
-	}
-	UpdateEncounterSteps();
+	CountPlayerStep();
 }
 
 void Game_Player::UpdateMovement(int amount) {
 	const bool was_jumping = IsJumping();
+	const bool was_tile_movement = IsMoving() || was_jumping;
 
 	Game_Character::UpdateMovement(amount);
+	if (was_tile_movement && IsStopping() && Player::project_settings.pixel_movement && !IsAboard()) {
+		SyncPixelPositionToTile();
+	}
 
 	UpdateScroll(amount, was_jumping);
 
@@ -398,6 +484,7 @@ void Game_Player::UpdateMovement(int amount) {
 }
 
 void Game_Player::Update() {
+	pixel_moved_this_frame = false;
 	Game_Character::Update();
 
 	if (IsStopping()) {
@@ -653,14 +740,23 @@ bool Game_Player::Move(int dir) {
 	if (!IsStopping()) {
 		return true;
 	}
+	if (Player::project_settings.pixel_movement) {
+		// Tile-based routes and vehicle transitions begin from the logical tile center.
+		SyncPixelPositionToTile();
+	}
 
 	Game_Character::Move(dir);
 	if (IsStopping()) {
 		return false;
 	}
 
+	ApplyMoveStepEffects();
+	return true;
+}
+
+void Game_Player::ApplyMoveStepEffects() {
 	if (InAirship()) {
-		return true;
+		return;
 	}
 
 	int terrain_id = Game_Map::GetTerrainTag(GetX(), GetY());
@@ -685,7 +781,7 @@ bool Game_Player::Move(int dir) {
 			if (terrain->damage > 0 && terrain->easyrpg_damage_can_kill) {
 				if (!Main_Data::game_party->IsAnyActive() && Main_Data::game_party->GetBattlerCount() > 0) {
 					Scene::instance->SetRequestedScene(std::make_shared<Scene_Gameover>());
-					return true;
+					return;
 				}
 			}
 		}
@@ -699,8 +795,134 @@ bool Game_Player::Move(int dir) {
 	if (red_flash) {
 		Main_Data::game_screen->FlashMapStepDamage();
 	}
+}
 
-	return true;
+void Game_Player::CountPlayerStep() {
+	Main_Data::game_party->IncSteps();
+	if (Main_Data::game_party->ApplyStateDamage()) {
+		Main_Data::game_screen->FlashMapStepDamage();
+	}
+	UpdateEncounterSteps();
+}
+
+bool Game_Player::UpdatePixelMovement(int dir) {
+	pixel_moved_this_frame = false;
+	if (dir < 0) {
+		return false;
+	}
+
+	SetDirection(dir);
+	UpdateFacing();
+
+	const int dir_x = GetDxFromDirection(dir);
+	const int dir_y = GetDyFromDirection(dir);
+	// Pixel motion uses half the current tile movement amount, preserving the
+	// exponential speed levels while making speed 4 move one visible pixel/frame.
+	const int amount = 1 << GetMoveSpeed();
+	const int starting_x = pixel_x;
+	const int starting_y = pixel_y;
+	// Four visible pixels on either side gives the pixel-mode player an 8x8 box.
+	const int collision_half_size = SCREEN_TILE_SIZE / 4;
+	const int logical_half_tile = SCREEN_TILE_SIZE / 2;
+
+	for (int unit = 0; unit < amount; ++unit) {
+		const int next_x = pixel_x + Utils::Signum(dir_x);
+		const int next_y = pixel_y + Utils::Signum(dir_y);
+		const int offset_x = pixel_x - pixel_origin_x;
+		const int offset_y = pixel_y - pixel_origin_y;
+		const int next_offset_x = next_x - pixel_origin_x;
+		const int next_offset_y = next_y - pixel_origin_y;
+		// Validate the leading footprint edge before it enters the neighboring cell.
+		const bool cross_x = dir_x > 0
+			? ((offset_x < collision_half_size && next_offset_x >= collision_half_size)
+				|| (pixel_collision_blocked_x_dir == 1 && offset_x >= collision_half_size))
+			: dir_x < 0
+				? ((offset_x > -collision_half_size && next_offset_x <= -collision_half_size)
+					|| (pixel_collision_blocked_x_dir == -1 && offset_x <= -collision_half_size))
+				: false;
+		const bool cross_y = dir_y > 0
+			? ((offset_y < collision_half_size && next_offset_y >= collision_half_size)
+				|| (pixel_collision_blocked_y_dir == 1 && offset_y >= collision_half_size))
+			: dir_y < 0
+				? ((offset_y > -collision_half_size && next_offset_y <= -collision_half_size)
+					|| (pixel_collision_blocked_y_dir == -1 && offset_y <= -collision_half_size))
+				: false;
+
+		if (cross_x || cross_y) {
+			const int tile_dx = cross_x ? Utils::Signum(dir_x) : 0;
+			const int tile_dy = cross_y ? Utils::Signum(dir_y) : 0;
+			int transition_dir = Down;
+			if (tile_dx > 0 && tile_dy > 0) transition_dir = DownRight;
+			else if (tile_dx > 0 && tile_dy < 0) transition_dir = UpRight;
+			else if (tile_dx < 0 && tile_dy > 0) transition_dir = DownLeft;
+			else if (tile_dx < 0 && tile_dy < 0) transition_dir = UpLeft;
+			else if (tile_dx > 0) transition_dir = Right;
+			else if (tile_dx < 0) transition_dir = Left;
+			else if (tile_dy > 0) transition_dir = Down;
+			else if (tile_dy < 0) transition_dir = Up;
+
+			if (!CheckMoveInDirection(transition_dir)) {
+				const auto target_x = Game_Map::RoundX(GetX() + tile_dx);
+				const auto target_y = Game_Map::RoundY(GetY() + tile_dy);
+				if (cross_x) {
+					pixel_x = pixel_origin_x + tile_dx * collision_half_size;
+					pixel_collision_blocked_x_dir = tile_dx;
+				}
+				if (cross_y) {
+					pixel_y = pixel_origin_y + tile_dy * collision_half_size;
+					pixel_collision_blocked_y_dir = tile_dy;
+				}
+				CheckEventTriggerThere(
+					{ lcf::rpg::EventPage::Trigger_touched, lcf::rpg::EventPage::Trigger_collision },
+					target_x, target_y, false
+				);
+				break;
+			}
+
+			if (cross_x) {
+				pixel_collision_blocked_x_dir = 0;
+			}
+			if (cross_y) {
+				pixel_collision_blocked_y_dir = 0;
+			}
+		}
+
+		pixel_x = next_x;
+		pixel_y = next_y;
+
+		// Logical occupancy follows the center and therefore changes later than
+		// the footprint collision check.
+		const bool logical_cross_x = dir_x > 0 ? next_offset_x >= logical_half_tile
+			: dir_x < 0 ? next_offset_x <= -logical_half_tile : false;
+		const bool logical_cross_y = dir_y > 0 ? next_offset_y >= logical_half_tile
+			: dir_y < 0 ? next_offset_y <= -logical_half_tile : false;
+		if (logical_cross_x || logical_cross_y) {
+			const int tile_dx = logical_cross_x ? Utils::Signum(dir_x) : 0;
+			const int tile_dy = logical_cross_y ? Utils::Signum(dir_y) : 0;
+			Game_Character::SetX(Game_Map::RoundX(GetX() + tile_dx));
+			Game_Character::SetY(Game_Map::RoundY(GetY() + tile_dy));
+			pixel_origin_x += tile_dx * SCREEN_TILE_SIZE;
+			pixel_origin_y += tile_dy * SCREEN_TILE_SIZE;
+			if (logical_cross_x) {
+				pixel_collision_blocked_x_dir = 0;
+			}
+			if (logical_cross_y) {
+				pixel_collision_blocked_y_dir = 0;
+			}
+			ApplyMoveStepEffects();
+			CountPlayerStep();
+			CheckEventTriggerHere({ lcf::rpg::EventPage::Trigger_touched, lcf::rpg::EventPage::Trigger_collision }, false);
+			if (Game_Map::IsAnyEventStarting()) {
+				break;
+			}
+		}
+	}
+	pixel_moved_this_frame = pixel_x != starting_x || pixel_y != starting_y;
+
+	if (pixel_moved_this_frame) {
+		UpdateScroll(0, false, std::abs(pixel_x - starting_x), std::abs(pixel_y - starting_y));
+	}
+	return pixel_moved_this_frame;
 }
 
 bool Game_Player::IsAboard() const {
