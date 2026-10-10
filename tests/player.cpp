@@ -21,29 +21,33 @@ TEST_CASE("Project movement settings default to false when keys are absent") {
 	const auto settings = Player::ParseProjectSettings(ini);
 	CHECK_FALSE(settings.eight_direction_movement);
 	CHECK_FALSE(settings.pixel_movement);
+	CHECK_FALSE(settings.run_with_shift);
 }
 
 TEST_CASE("Project movement settings accept explicit false values") {
 	std::istringstream stream(
 		"[EasyRPG]\n"
 		"EightDirectionMovement=false\n"
-		"PixelMovement=false\n");
+		"PixelMovement=false\n"
+		"RunWithShift=false\n");
 	lcf::INIReader ini(stream);
 
 	const auto settings = Player::ParseProjectSettings(ini);
 	CHECK_FALSE(settings.eight_direction_movement);
 	CHECK_FALSE(settings.pixel_movement);
+	CHECK_FALSE(settings.run_with_shift);
 }
 
 TEST_CASE("Project movement settings read opt-in values from the EasyRPG section") {
 	std::istringstream stream(
-		"[RPG_RT]\nEightDirectionMovement=true\nPixelMovement=true\n"
-		"[EasyRPG]\nEightDirectionMovement=true\nPixelMovement=true\n");
+		"[RPG_RT]\nEightDirectionMovement=true\nPixelMovement=true\nRunWithShift=true\n"
+		"[EasyRPG]\nEightDirectionMovement=true\nPixelMovement=true\nRunWithShift=true\n");
 	lcf::INIReader ini(stream);
 
 	const auto settings = Player::ParseProjectSettings(ini);
 	CHECK(settings.eight_direction_movement);
 	CHECK(settings.pixel_movement);
+	CHECK(settings.run_with_shift);
 }
 
 TEST_CASE("CP1256 encoding aliases are recognized for Arabic font fallback") {

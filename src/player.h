@@ -40,6 +40,7 @@ namespace Player {
 	struct ProjectSettings {
 		bool eight_direction_movement = false;
 		bool pixel_movement = false;
+		bool run_with_shift = false;
 	};
 
 	/** Runtime settings for the currently loaded project. */

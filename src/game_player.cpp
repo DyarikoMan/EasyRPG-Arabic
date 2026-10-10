@@ -123,7 +123,20 @@ void Game_Player::UpdateAnimation() {
 	const auto stop_count = GetStopCount();
 	SetStopCount(0);
 	Game_Character::UpdateAnimation();
+	if (pixel_running_this_frame) {
+		Game_Character::UpdateAnimation();
+	}
 	SetStopCount(stop_count);
+}
+
+int Game_Player::GetAnimationSpeed() const {
+	const auto speed = GetMoveSpeed();
+	if (IsUsingPixelMovement() && pixel_moved_this_frame) {
+		// Pixel walking uses a slower animation tier; speed 4 selects the
+		// existing 10-frame non-continuous cadence. Other tiers scale with it.
+		return std::max(speed - 2, 1);
+	}
+	return speed;
 }
 
 Drawable::Z_t Game_Player::GetScreenZ(int x_offset, int y_offset) const {
@@ -485,6 +498,7 @@ void Game_Player::UpdateMovement(int amount) {
 
 void Game_Player::Update() {
 	pixel_moved_this_frame = false;
+	pixel_running_this_frame = false;
 	Game_Character::Update();
 
 	if (IsStopping()) {
@@ -807,6 +821,7 @@ void Game_Player::CountPlayerStep() {
 
 bool Game_Player::UpdatePixelMovement(int dir) {
 	pixel_moved_this_frame = false;
+	pixel_running_this_frame = false;
 	if (dir < 0) {
 		return false;
 	}
@@ -816,9 +831,11 @@ bool Game_Player::UpdatePixelMovement(int dir) {
 
 	const int dir_x = GetDxFromDirection(dir);
 	const int dir_y = GetDyFromDirection(dir);
-	// Pixel motion uses half the current tile movement amount, preserving the
-	// exponential speed levels while making speed 4 move one visible pixel/frame.
-	const int amount = 1 << GetMoveSpeed();
+	// Pixel walking preserves the exponential speed levels while making speed 4
+	// move one visible pixel/frame. Optional Shift running doubles that distance.
+	const bool running = Player::project_settings.run_with_shift && Input::IsPressed(Input::SHIFT);
+	const int run_multiplier = running ? 2 : 1;
+	const int amount = (1 << GetMoveSpeed()) * run_multiplier;
 	const int starting_x = pixel_x;
 	const int starting_y = pixel_y;
 	// Four visible pixels on either side gives the pixel-mode player an 8x8 box.
@@ -918,6 +935,7 @@ bool Game_Player::UpdatePixelMovement(int dir) {
 		}
 	}
 	pixel_moved_this_frame = pixel_x != starting_x || pixel_y != starting_y;
+	pixel_running_this_frame = pixel_moved_this_frame && running;
 
 	if (pixel_moved_this_frame) {
 		UpdateScroll(0, false, std::abs(pixel_x - starting_x), std::abs(pixel_y - starting_y));

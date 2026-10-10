@@ -134,6 +134,7 @@ namespace Player {
 		ProjectSettings settings;
 		settings.eight_direction_movement = ini.GetBoolean("EasyRPG", "EightDirectionMovement", false);
 		settings.pixel_movement = ini.GetBoolean("EasyRPG", "PixelMovement", false);
+		settings.run_with_shift = ini.GetBoolean("EasyRPG", "RunWithShift", false);
 		return settings;
 	}
 	int frames;
@@ -801,6 +802,7 @@ void Player::CreateGameObjects() {
 	}
 	Output::Debug("Project setting EightDirectionMovement={}", Player::project_settings.eight_direction_movement);
 	Output::Debug("Project setting PixelMovement={}", Player::project_settings.pixel_movement);
+	Output::Debug("Project setting RunWithShift={}", Player::project_settings.run_with_shift);
 
 	UpdateTitle(game_title);
 

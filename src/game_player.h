@@ -169,6 +169,7 @@ private:
 	using TriggerSet = lcf::FlagSet<lcf::rpg::EventPage::Trigger>;
 
 	void UpdateAnimation() override;
+	int GetAnimationSpeed() const override;
 	void UpdateScroll(int amount, bool was_jumping, int pixel_amount_x = -1, int pixel_amount_y = -1);
 	void SyncPixelPositionToTile();
 	bool IsUsingPixelMovement() const;
@@ -194,6 +195,7 @@ private:
 	int pixel_collision_blocked_x_dir = 0;
 	int pixel_collision_blocked_y_dir = 0;
 	bool pixel_moved_this_frame = false;
+	bool pixel_running_this_frame = false;
 };
 
 inline bool Game_Player::IsPendingTeleport() const {
