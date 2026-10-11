@@ -24,6 +24,7 @@
 #include <tuple>
 #include <chrono>
 #include <cassert>
+#include <algorithm>
 
 #include "async_handler.h"
 #include "cache.h"
@@ -33,6 +34,7 @@
 #include "bitmap.h"
 #include "output.h"
 #include "player.h"
+#include "widescreen_asset.h"
 #include <lcf/data.h>
 #include "game_clock.h"
 #include "translation.h"
@@ -313,6 +315,14 @@ namespace {
 			// 240px backdrop height is 2k3 specific, for 2k is 160px
 			if (T == Material::Backdrop) {
 				max_h = min_h = Player::IsRPG2k() ? 160 : 240;
+			}
+
+			// Widescreen Title, Backdrop and Frame images can match a project's
+			// logical width while retaining their normal RPG Maker height.
+			if (WidescreenAsset::IsWideSibling(filename) && Player::screen_width > SCREEN_TARGET_WIDTH &&
+					(T == Material::Title || T == Material::Backdrop || T == Material::Frame) &&
+					w >= SCREEN_TARGET_WIDTH && h == max_h) {
+				max_w = std::max(max_w, w);
 			}
 
 			// EasyRPG extensions add support for large charsets; size is spoofed to ignore the error

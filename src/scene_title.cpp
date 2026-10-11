@@ -37,6 +37,8 @@
 #include "meta.h"
 #include "output.h"
 #include "player.h"
+#include "filefinder.h"
+#include "widescreen_asset.h"
 #include "translation.h"
 #include "scene_battle.h"
 #include "scene_import.h"
@@ -189,14 +191,21 @@ void Scene_Title::CreateTitleGraphic() {
 	// Load Title Graphic
 	if (!lcf::Data::system.title_name.empty()) {
 		title.reset(new Sprite());
-		FileRequestAsync* request = AsyncHandler::RequestFile("Title", lcf::Data::system.title_name);
-		request->SetGraphicFile(true);
-		request_id = request->Bind(&Scene_Title::OnTitleSpriteReady, this);
-		request->Start();
+		const std::string original_name = ToString(lcf::Data::system.title_name);
+		const bool wide_candidate = WidescreenAsset::ShouldTryWide(Player::screen_width);
+		const std::string name = wide_candidate ? WidescreenAsset::MakeWideSibling(original_name) : original_name;
+		RequestTitleGraphic(name, original_name, wide_candidate);
 	} else {
 		title.reset(new Sprite());
 		title->SetBitmap(Bitmap::Create(Player::screen_width, Player::screen_height, Color(0, 0, 0, 255)));
 	}
+}
+
+void Scene_Title::RequestTitleGraphic(const std::string& name, const std::string& original_name, bool wide_candidate) {
+	FileRequestAsync* request = AsyncHandler::RequestFile("Title", name);
+	request->SetGraphicFile(true);
+	request_id = request->Bind(&Scene_Title::OnTitleSpriteReady, this, std::string(original_name), wide_candidate);
+	request->Start();
 }
 
 void Scene_Title::RepositionWindow(Window_Command& window, bool center_vertical) {
@@ -327,17 +336,28 @@ void Scene_Title::CommandShutdown() {
 	Scene::Pop();
 }
 
-void Scene_Title::OnTitleSpriteReady(FileRequestResult* result) {
-	BitmapRef bitmapRef = Cache::Title(result->file);
+void Scene_Title::OnTitleSpriteReady(FileRequestResult* result, std::string original_name, bool wide_candidate) {
+	std::string selected_name = result->file;
+	if (wide_candidate) {
+		const bool wide_available = result->success && static_cast<bool>(FileFinder::OpenImage("Title", result->file));
+		selected_name = WidescreenAsset::SelectName(original_name, Player::screen_width, wide_available);
+		if (selected_name == original_name) {
+			RequestTitleGraphic(original_name, original_name, false);
+			return;
+		}
+	}
+
+	BitmapRef bitmapRef = Cache::Title(selected_name);
+	const bool wide_asset = selected_name != original_name;
 
 	title->SetBitmap(bitmapRef);
 
 	// If the title sprite doesn't fill the screen, center it to support custom resolutions
 	if (bitmapRef->GetWidth() < Player::screen_width) {
-		title->SetX(Player::menu_offset_x);
+		title->SetX(wide_asset ? (Player::screen_width - bitmapRef->GetWidth()) / 2 : Player::menu_offset_x);
 	}
 	if (bitmapRef->GetHeight() < Player::screen_height) {
-		title->SetY(Player::menu_offset_y);
+		title->SetY(wide_asset ? (Player::screen_height - bitmapRef->GetHeight()) / 2 : Player::menu_offset_y);
 	}
 }
 

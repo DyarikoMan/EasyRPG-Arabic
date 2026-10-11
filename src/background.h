@@ -38,9 +38,10 @@ public:
 private:
 	static void Update(int& rate, int& value);
 	static int Scale(int x);
+	void RequestGraphic(const std::string& directory, const std::string& original_name, bool foreground, bool allow_wide = true);
 
-	void OnBackgroundGraphicReady(FileRequestResult* result);
-	void OnForegroundFrameGraphicReady(FileRequestResult* result);
+	void OnBackgroundGraphicReady(FileRequestResult* result, std::string original_name, bool wide_candidate);
+	void OnForegroundFrameGraphicReady(FileRequestResult* result, std::string original_name, bool wide_candidate);
 
 	Tone tone_effect;
 	Tone current_tone;
@@ -49,11 +50,13 @@ private:
 	int bg_vscroll = 0;
 	int bg_x = 0;
 	int bg_y = 0;
+	bool bg_wide = false;
 	BitmapRef fg_bitmap;
 	int fg_hscroll = 0;
 	int fg_vscroll = 0;
 	int fg_x = 0;
 	int fg_y = 0;
+	bool fg_wide = false;
 
 	FileRequestBinding fg_request_id;
 	FileRequestBinding bg_request_id;

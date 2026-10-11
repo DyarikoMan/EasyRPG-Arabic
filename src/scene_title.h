@@ -127,7 +127,8 @@ public:
 	static void RepositionWindow(Window_Command& window, bool center_vertical);
 
 private:
-	void OnTitleSpriteReady(FileRequestResult* result);
+	void RequestTitleGraphic(const std::string& name, const std::string& original_name, bool wide_candidate);
+	void OnTitleSpriteReady(FileRequestResult* result, std::string original_name, bool wide_candidate);
 
 	/** Displays the options of the title scene. */
 	std::unique_ptr<Window_Command> command_window;
