@@ -759,14 +759,14 @@ public:
 	 *
 	 * @return real x.
 	 */
-	int GetSpriteX() const;
+	virtual int GetSpriteX() const;
 
 	/**
 	 * Gets sprite y position in pixels.
 	 *
 	 * @return real y.
 	 */
-	int GetSpriteY() const;
+	virtual int GetSpriteY() const;
 
 	/**
 	 * Gets remaining step
@@ -932,6 +932,7 @@ protected:
 	void SanitizeMoveRoute(std::string_view name, const lcf::rpg::MoveRoute& mr, int32_t& idx, std::string_view chunk_name);
 	void Update();
 	virtual void UpdateAnimation();
+	virtual int GetAnimationSpeed() const;
 	virtual void UpdateNextMovementAction() = 0;
 	virtual void UpdateMovement(int amount);
 
@@ -942,6 +943,8 @@ protected:
 	void IncAnimCount();
 	void IncAnimFrame();
 	void UpdateFlash();
+	/** Check whether a tile step in dir is possible using this character's MakeWay path. */
+	bool CheckMoveInDirection(int dir);
 	bool BeginMoveRouteJump(int32_t& current_index, const lcf::rpg::MoveRoute& current_route);
 
 	lcf::rpg::SaveMapEventBase* data();

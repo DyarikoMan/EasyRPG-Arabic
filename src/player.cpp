@@ -98,6 +98,7 @@
 using namespace std::chrono_literals;
 
 namespace Player {
+	ProjectSettings project_settings;
 	int screen_width = SCREEN_TARGET_WIDTH;
 	int screen_height = SCREEN_TARGET_HEIGHT;
 	int menu_offset_x = (screen_width - MENU_WIDTH) / 2;
@@ -128,6 +129,15 @@ namespace Player {
 	FileExtGuesser::RPG2KFileExtRemap fileext_map;
 	std::string startup_language;
 	Translation translation;
+
+	ProjectSettings ParseProjectSettings(const lcf::INIReader& ini) {
+		ProjectSettings settings;
+		settings.eight_direction_movement = ini.GetBoolean("EasyRPG", "EightDirectionMovement", false);
+		settings.pixel_movement = ini.GetBoolean("EasyRPG", "PixelMovement", false);
+		settings.run_with_shift = ini.GetBoolean("EasyRPG", "RunWithShift", false);
+		settings.smooth_camera = ini.GetBoolean("EasyRPG", "SmoothCamera", false);
+		return settings;
+	}
 	int frames;
 	std::string replay_input_path;
 	std::string record_input_path;
@@ -712,6 +722,8 @@ Game_Config Player::ParseCommandLine() {
 }
 
 void Player::CreateGameObjects() {
+	project_settings = {};
+
 	// Parse game specific settings
 	CmdlineParser cp(arguments);
 	game_config = Game_ConfigGame();
@@ -777,6 +789,7 @@ void Player::CreateGameObjects() {
 		if (ini_stream) {
 			lcf::INIReader ini(ini_stream);
 			if (ini.ParseError() != -1) {
+				Player::project_settings = Player::ParseProjectSettings(ini);
 				auto title = ini.Get("RPG_RT", "GameTitle", GAME_TITLE);
 				game_title = lcf::ReaderUtil::Recode(title, encoding);
 				no_rtp_warning_flag = ini.Get("RPG_RT", "FullPackageFlag", "0") == "1" ? true : no_rtp_flag;
@@ -788,6 +801,10 @@ void Player::CreateGameObjects() {
 			}
 		}
 	}
+	Output::Debug("Project setting EightDirectionMovement={}", Player::project_settings.eight_direction_movement);
+	Output::Debug("Project setting PixelMovement={}", Player::project_settings.pixel_movement);
+	Output::Debug("Project setting RunWithShift={}", Player::project_settings.run_with_shift);
+	Output::Debug("Project setting SmoothCamera={}", Player::project_settings.smooth_camera);
 
 	UpdateTitle(game_title);
 
