@@ -3,6 +3,9 @@ $ErrorActionPreference = 'Stop'
 $toolsDirectory = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $arabicDirectory = Split-Path -Parent $toolsDirectory
 $updateScript = Join-Path $toolsDirectory 'update-arabic.ps1'
+$defaultsPath = Join-Path $arabicDirectory 'new-project-defaults.ini'
+$hadDefaultsBeforeTest = Test-Path -LiteralPath $defaultsPath -PathType Leaf
+$defaultsBeforeTest = if ($hadDefaultsBeforeTest) { [System.IO.File]::ReadAllBytes($defaultsPath) } else { $null }
 $canonicalPath = Join-Path $arabicDirectory 'terminology\canonical-terms.json'
 $canonical = Get-Content -LiteralPath $canonicalPath -Raw -Encoding UTF8 | ConvertFrom-Json
 
@@ -68,6 +71,7 @@ $oldPath = $env:PATH
 try {
 	# Keep this test independent of any LcfTrans installation on the test machine.
 	$env:PATH = Join-Path $fixtureRoot 'empty-path'
+	if (Test-Path -LiteralPath $defaultsPath -PathType Leaf) { Remove-Item -LiteralPath $defaultsPath -Force }
 	& $updateScript -GamePath $gamePath -InitializeNewProject
 	$initializedIni = [System.IO.File]::ReadAllText($iniPath, [System.Text.Encoding]::UTF8)
 	if ($initializedIni -notmatch '(?m)^WinW=426\r?$' -or $initializedIni -notmatch '(?m)^WinH=240\r?$') {
@@ -76,6 +80,63 @@ try {
 	if (-not $initializedIni.Contains('GameTitle=مشروع جديد') -or -not $initializedIni.Contains("[Other]`r`nKeep=unchanged")) {
 		throw 'New-project initialization changed unrelated RPG_RT.ini values.'
 	}
+	foreach ($key in @('EightDirectionMovement', 'PixelMovement', 'RunWithShift', 'SmoothCamera')) {
+		if ($initializedIni -notmatch ('(?im)^' + [regex]::Escape($key) + '=false\r?$')) { throw "Missing defaults did not explicitly initialize $key=false." }
+	}
+
+	$crlf = [string][char]13 + [string][char]10
+	$freshGame = Join-Path $fixtureRoot 'FreshProjectAllOff'
+	$null = New-Item -ItemType Directory -Force -Path $freshGame
+	& $updateScript -GamePath $freshGame -InitializeNewProject
+	$freshIni = [System.IO.File]::ReadAllText((Join-Path $freshGame 'RPG_RT.ini'), [System.Text.Encoding]::ASCII)
+	if ($freshIni -notmatch '(?m)^WinW=426\r?$' -or $freshIni -notmatch '(?m)^WinH=240\r?$') { throw 'Fresh-project initialization did not retain 426x240 widescreen values.' }
+	foreach ($key in @('EightDirectionMovement', 'PixelMovement', 'RunWithShift', 'SmoothCamera')) {
+		if ($freshIni -notmatch ('(?im)^' + [regex]::Escape($key) + '=false\r?$')) { throw "Fresh all-off defaults did not explicitly initialize $key=false." }
+	}
+
+	$falseDefaults = [string]::Join($crlf, @('[EasyRPG]', 'EightDirectionMovement=false', 'PixelMovement=false', 'RunWithShift=false', 'SmoothCamera=false', ''))
+	[System.IO.File]::WriteAllText($defaultsPath, $falseDefaults, [System.Text.Encoding]::ASCII)
+	$explicitFalseGame = Join-Path $fixtureRoot 'ExplicitFalseProject'
+	$null = New-Item -ItemType Directory -Force -Path $explicitFalseGame
+	& $updateScript -GamePath $explicitFalseGame -InitializeNewProject
+	$explicitFalseIni = [System.IO.File]::ReadAllText((Join-Path $explicitFalseGame 'RPG_RT.ini'), [System.Text.Encoding]::ASCII)
+	foreach ($key in @('EightDirectionMovement', 'PixelMovement', 'RunWithShift', 'SmoothCamera')) {
+		if ($explicitFalseIni -notmatch ('(?im)^' + [regex]::Escape($key) + '=false\r?$')) { throw "Explicit false defaults did not preserve $key=false." }
+	}
+
+	$trueDefaults = [string]::Join($crlf, @('[EasyRPG]', 'EightDirectionMovement=true', 'PixelMovement=true', 'RunWithShift=true', 'SmoothCamera=true', ''))
+	[System.IO.File]::WriteAllText($defaultsPath, $trueDefaults, [System.Text.Encoding]::ASCII)
+	$allOnGame = Join-Path $fixtureRoot 'AllMovementOnProject'
+	$null = New-Item -ItemType Directory -Force -Path $allOnGame
+	$lf = [string][char]10
+	$allOnIniInput = [string]::Join($lf, @('[RPG_RT]', 'GameTitle=Keep title', 'WinW=320', '[Other]', 'Keep=unchanged'))
+	$inputBody = [System.Text.UTF8Encoding]::new($false).GetBytes($allOnIniInput)
+	$inputWithBom = [byte[]]::new($inputBody.Length + 3)
+	$inputWithBom[0] = 0xEF; $inputWithBom[1] = 0xBB; $inputWithBom[2] = 0xBF
+	[Array]::Copy($inputBody, 0, $inputWithBom, 3, $inputBody.Length)
+	$allOnIniPath = Join-Path $allOnGame 'RPG_RT.ini'
+	[System.IO.File]::WriteAllBytes($allOnIniPath, $inputWithBom)
+	& $updateScript -GamePath $allOnGame -InitializeNewProject
+	$allOnBytes = [System.IO.File]::ReadAllBytes($allOnIniPath)
+	if ($allOnBytes[0] -ne 0xEF -or $allOnBytes[1] -ne 0xBB -or $allOnBytes[2] -ne 0xBF) { throw 'New-project initialization did not preserve the UTF-8 BOM.' }
+	$allOnIni = [System.Text.UTF8Encoding]::new($false).GetString($allOnBytes, 3, $allOnBytes.Length - 3)
+	if ($allOnIni.Contains([string][char]13) -or $allOnIni.EndsWith($lf)) { throw 'New-project initialization did not preserve LF newlines and the missing final newline.' }
+	if (-not $allOnIni.Contains('[Other]' + $lf + 'Keep=unchanged') -or -not $allOnIni.Contains('GameTitle=Keep title') -or
+		$allOnIni -notmatch '(?m)^WinW=426$' -or $allOnIni -notmatch '(?m)^WinH=240$') { throw 'Movement defaults changed unrelated INI content or widescreen values.' }
+	foreach ($key in @('EightDirectionMovement', 'PixelMovement', 'RunWithShift', 'SmoothCamera')) {
+		if ($allOnIni -notmatch ('(?im)^' + [regex]::Escape($key) + '=true$')) { throw "All-on defaults did not set $key=true." }
+	}
+
+	$invalidDefaults = [string]::Join($crlf, @('[EasyRPG]', 'EightDirectionMovement=true', 'PixelMovement=invalid', 'RunWithShift=true', 'SmoothCamera=true', ''))
+	[System.IO.File]::WriteAllText($defaultsPath, $invalidDefaults, [System.Text.Encoding]::ASCII)
+	$invalidDefaultsGame = Join-Path $fixtureRoot 'InvalidDefaultsProject'
+	$null = New-Item -ItemType Directory -Force -Path $invalidDefaultsGame
+	& $updateScript -GamePath $invalidDefaultsGame -InitializeNewProject
+	$invalidDefaultsIni = [System.IO.File]::ReadAllText((Join-Path $invalidDefaultsGame 'RPG_RT.ini'), [System.Text.Encoding]::ASCII)
+	foreach ($key in @('EightDirectionMovement', 'PixelMovement', 'RunWithShift', 'SmoothCamera')) {
+		if ($invalidDefaultsIni -notmatch ('(?im)^' + [regex]::Escape($key) + '=false\r?$')) { throw "Invalid managed defaults did not fall back to all false ($key)." }
+	}
+
 	$fontPath = Join-Path $languageDirectory 'Font\Font.ttf'
 	if (-not (Test-Path -LiteralPath $fontPath -PathType Leaf) -or
 		(Get-FileHash -LiteralPath $fontPath -Algorithm SHA256).Hash -ne '68B412A4D8443FE677DD37412BB44D117CADE607572B2CC9689177DA3934952F') {
@@ -127,6 +188,15 @@ try {
 		throw '-ForceCanonical changed a game-specific translation.'
 	}
 
+	# A normal updater run must preserve movement settings in an existing project.
+	$existingMovementIni = [string]::Join($crlf, @('[RPG_RT]', 'GameTitle=Keep title', 'WinW=320', 'WinH=240', '[EasyRPG]', 'EightDirectionMovement=true', 'PixelMovement=true', 'RunWithShift=true', 'SmoothCamera=true', ''))
+	[System.IO.File]::WriteAllText($iniPath, $existingMovementIni, [System.Text.Encoding]::ASCII)
+	$movementSettingsBeforeOpen = [System.IO.File]::ReadAllBytes($iniPath)
+	& $updateScript -GamePath $gamePath -ForceCanonical
+	if ([Convert]::ToBase64String($movementSettingsBeforeOpen) -ne [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($iniPath))) {
+		throw 'A normal updater run changed an existing project RPG_RT.ini, including movement settings.'
+	}
+
 	# A deterministic command shim confirms that the updater selects Windows-1256.
 	$stubPath = Join-Path $fixtureRoot 'lcftrans-stub.cmd'
 	$stubContent = @'
@@ -163,6 +233,8 @@ exit /b 0
 	Write-Host 'PASS: multiline PO parsing, 143 canonical terms, Arabic preservation, font copy/no-overwrite, new-project 426x240 initialization, existing resolution preservation, escaping, UTF-8, -ForceCanonical, LcfTrans CP1256 selection, and runtime transcript.' -ForegroundColor Green
 } finally {
 	$env:PATH = $oldPath
+	if ($hadDefaultsBeforeTest) { [System.IO.File]::WriteAllBytes($defaultsPath, $defaultsBeforeTest) }
+	elseif (Test-Path -LiteralPath $defaultsPath -PathType Leaf) { Remove-Item -LiteralPath $defaultsPath -Force }
 	if (Test-Path -LiteralPath $fixtureRoot -PathType Container) {
 		$tempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\') + '\'
 		$resolvedFixture = (Resolve-Path -LiteralPath $fixtureRoot).ProviderPath

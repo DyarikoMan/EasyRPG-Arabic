@@ -350,12 +350,106 @@ function Get-UntranslatedPoEntryCount {
 	return $emptyCount
 }
 
+function Get-NewProjectMovementDefaults {
+	param ([Parameter(Mandatory = $true)][string]$SupportDirectory)
+
+	$defaults = [ordered]@{
+		EightDirectionMovement = $false
+		PixelMovement = $false
+		RunWithShift = $false
+		SmoothCamera = $false
+	}
+	$defaultsPath = Join-Path $SupportDirectory 'new-project-defaults.ini'
+	if (-not (Test-Path -LiteralPath $defaultsPath -PathType Leaf)) { return $defaults }
+
+	try {
+		$content = [System.IO.File]::ReadAllText($defaultsPath, [System.Text.UTF8Encoding]::new($false, $true))
+		$seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+		$inEasyRpg = $false
+		foreach ($line in [regex]::Split($content, '\r\n|\n|\r')) {
+			$trimmed = $line.Trim()
+			if ($trimmed.Length -eq 0 -or $trimmed.StartsWith(';') -or $trimmed.StartsWith('#')) { continue }
+			if ($trimmed -match '^\[([^\]]+)\]$') {
+				$inEasyRpg = [string]::Equals($Matches[1], 'EasyRPG', [System.StringComparison]::OrdinalIgnoreCase)
+				continue
+			}
+			if (-not $inEasyRpg -or $trimmed -notmatch '^(EightDirectionMovement|PixelMovement|RunWithShift|SmoothCamera)\b') { continue }
+			if ($trimmed -notmatch '^(EightDirectionMovement|PixelMovement|RunWithShift|SmoothCamera)\s*=\s*(true|false)\s*$') {
+				return [ordered]@{ EightDirectionMovement = $false; PixelMovement = $false; RunWithShift = $false; SmoothCamera = $false }
+			}
+			$key = $Matches[1]
+			if (-not $seen.Add($key)) {
+				return [ordered]@{ EightDirectionMovement = $false; PixelMovement = $false; RunWithShift = $false; SmoothCamera = $false }
+			}
+			$defaults[$key] = [string]::Equals($Matches[2], 'true', [System.StringComparison]::OrdinalIgnoreCase)
+		}
+		if ($seen.Count -ne 4) { return [ordered]@{ EightDirectionMovement = $false; PixelMovement = $false; RunWithShift = $false; SmoothCamera = $false } }
+		if (-not $defaults.PixelMovement) {
+			$defaults.RunWithShift = $false
+			$defaults.SmoothCamera = $false
+		}
+		return $defaults
+	} catch {
+		return [ordered]@{ EightDirectionMovement = $false; PixelMovement = $false; RunWithShift = $false; SmoothCamera = $false }
+	}
+}
+
+function Set-IniSectionValues {
+	param (
+		[Parameter(Mandatory = $true)][AllowEmptyCollection()][System.Collections.Generic.List[string]]$Lines,
+		[Parameter(Mandatory = $true)][string]$Section,
+		[Parameter(Mandatory = $true)][System.Collections.IDictionary]$Values
+	)
+
+	$sectionPattern = '^\s*\[' + [regex]::Escape($Section) + '\]\s*$'
+	$headerPattern = '^\s*\[[^\]]+\]\s*$'
+	$targetSection = -1
+	for ($index = 0; $index -lt $Lines.Count; $index++) {
+		if ($Lines[$index] -match $sectionPattern) { $targetSection = $index; break }
+	}
+	if ($targetSection -lt 0) {
+		if ($Lines.Count -gt 0 -and $Lines[$Lines.Count - 1].Length -gt 0) { $Lines.Add('') }
+		$Lines.Add("[$Section]")
+		$targetSection = $Lines.Count - 1
+	}
+
+	$sectionEnd = $targetSection + 1
+	while ($sectionEnd -lt $Lines.Count -and $Lines[$sectionEnd] -notmatch $headerPattern) { $sectionEnd++ }
+	foreach ($key in $Values.Keys) {
+		$keyPattern = '^\s*' + [regex]::Escape([string]$key) + '\s*='
+		$found = $false
+		for ($index = $targetSection + 1; $index -lt $sectionEnd; $index++) {
+			if ($Lines[$index] -match $keyPattern) {
+				$Lines[$index] = [string]$key + '=' + [string]$Values[$key]
+				$found = $true
+			}
+		}
+		if (-not $found) {
+			$Lines.Insert($sectionEnd, [string]$key + '=' + [string]$Values[$key])
+			$sectionEnd++
+		}
+	}
+}
+
 function Set-NewProjectResolution {
-	param ([Parameter(Mandatory = $true)][string]$Directory)
+	param (
+		[Parameter(Mandatory = $true)][string]$Directory,
+		[Parameter(Mandatory = $true)][System.Collections.IDictionary]$MovementDefaults
+	)
 
 	$iniPath = Join-Path $Directory 'RPG_RT.ini'
+	$movementValues = [ordered]@{
+		EightDirectionMovement = if ($MovementDefaults.EightDirectionMovement) { 'true' } else { 'false' }
+		PixelMovement = if ($MovementDefaults.PixelMovement) { 'true' } else { 'false' }
+		RunWithShift = if ($MovementDefaults.RunWithShift) { 'true' } else { 'false' }
+		SmoothCamera = if ($MovementDefaults.SmoothCamera) { 'true' } else { 'false' }
+	}
 	if (-not (Test-Path -LiteralPath $iniPath -PathType Leaf)) {
-		[System.IO.File]::WriteAllText($iniPath, "[RPG_RT]`r`nWinW=426`r`nWinH=240`r`n", [System.Text.Encoding]::ASCII)
+		$lines = [System.Collections.Generic.List[string]]::new()
+		Set-IniSectionValues -Lines $lines -Section 'RPG_RT' -Values ([ordered]@{ WinW = '426'; WinH = '240' })
+		Set-IniSectionValues -Lines $lines -Section 'EasyRPG' -Values $movementValues
+		$crlf = [string][char]13 + [string][char]10
+		[System.IO.File]::WriteAllText($iniPath, [string]::Join($crlf, $lines) + $crlf, [System.Text.Encoding]::ASCII)
 		return
 	}
 
@@ -403,7 +497,6 @@ function Set-NewProjectResolution {
 		$lines.Add('[RPG_RT]')
 		$lines.Add('WinW=426')
 		$lines.Add('WinH=240')
-		$hadFinalNewline = $true
 	} else {
 		$sectionEnd = $targetSection + 1
 		while ($sectionEnd -lt $lines.Count -and $lines[$sectionEnd] -notmatch $headerPattern) { $sectionEnd++ }
@@ -418,6 +511,7 @@ function Set-NewProjectResolution {
 		if (-not $hasHeight) { $lines.Insert($insertAt, 'WinH=240') }
 	}
 
+	Set-IniSectionValues -Lines $lines -Section 'EasyRPG' -Values $movementValues
 	$updatedContent = [string]::Join($newline, $lines)
 	if ($hadFinalNewline) { $updatedContent += $newline }
 	$encoded = $encoding.GetBytes($updatedContent)
@@ -451,8 +545,9 @@ $filesUpdated = [System.Collections.Generic.List[string]]::new()
 $warnings = [System.Collections.Generic.List[string]]::new()
 
 if ($InitializeNewProject) {
-	Set-NewProjectResolution -Directory $gameDirectory
-	Write-Host 'Initialized new project resolution to 426x240.'
+	$movementDefaults = Get-NewProjectMovementDefaults -SupportDirectory $arabicDirectory
+	Set-NewProjectResolution -Directory $gameDirectory -MovementDefaults $movementDefaults
+	Write-Host 'Initialized new project resolution to 426x240 and applied movement defaults.'
 }
 
 Get-ChildItem -LiteralPath $templateLanguageDirectory -File -Recurse | ForEach-Object {

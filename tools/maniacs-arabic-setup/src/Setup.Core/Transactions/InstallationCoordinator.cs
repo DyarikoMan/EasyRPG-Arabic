@@ -25,9 +25,9 @@ public sealed class InstallationCoordinator
 	public async Task<SetupInstallResult> InstallAsync(
 		string sourceDirectory,
 		string destinationDirectory,
-	SetupPlan plan,
-	bool replaceExisting,
-	CancellationToken cancellationToken = default) =>
+		SetupPlan plan,
+		bool replaceExisting,
+		CancellationToken cancellationToken = default) =>
 		await InstallAsync(sourceDirectory, destinationDirectory, plan, replaceExisting, null, false, cancellationToken).ConfigureAwait(false);
 
 	public async Task<SetupInstallResult> InstallAsync(
@@ -38,7 +38,8 @@ public sealed class InstallationCoordinator
 		string? maniacsPackageDirectory,
 		bool maniacsLicenseAccepted,
 		CancellationToken cancellationToken = default,
-		IProgress<InstallationProgress>? progress = null)
+		IProgress<InstallationProgress>? progress = null,
+		NewProjectDefaults? projectDefaults = null)
 	{
 		var lastPercent = 0;
 		void Report(string stage, int percent, bool failed = false)
@@ -66,7 +67,8 @@ public sealed class InstallationCoordinator
 		Report("Preparing installation...", 8);
 		var moduleCompletePercent = 8;
 		var context = new SetupModuleContext(transaction.SourceDirectory, transaction.StagingDirectory, transaction.FinalDirectory,
-			maniacsPackageDirectory, maniacsLicenseAccepted, stage => Report(stage, moduleCompletePercent));
+			maniacsPackageDirectory, maniacsLicenseAccepted, stage => Report(stage, moduleCompletePercent),
+			(projectDefaults ?? NewProjectDefaults.AllFalse).Normalize());
 		var applied = new List<(ISetupModule Module, ModuleApplyResult Result)>();
 		try
 		{

@@ -11,11 +11,11 @@ public sealed class EasyRpgArabicSetupModuleTests
 	{
 		var payload = EasyRpgArabicPlayerPayload.LoadEmbedded();
 
-		Assert.Equal("3aff8a993a2f0ab37a579313d6267830f07b9e1c", payload.BuildId);
+		Assert.Equal("0f79458c8e97a98d4a51e5e2472b84e5bc49dfef", payload.BuildId);
 		Assert.Equal("0.8.1", payload.Version);
 		Assert.Equal("x64", payload.Architecture);
-		Assert.Equal(14_567_424, payload.Size);
-		Assert.Equal("A5885AA58A9D59A7BA4EFA8DF8611551E15AD53D4FFFD109D2979D1196651AF5", payload.Sha256);
+		Assert.Equal(14_572_032, payload.Size);
+		Assert.Equal("A300BE9787B73373976F60569052C8AB3C660261DCB5094B2DDFFFE460FBA6DB", payload.Sha256);
 		Assert.Equal("Player.exe", payload.InstalledPath);
 	}
 
@@ -32,17 +32,30 @@ public sealed class EasyRpgArabicSetupModuleTests
 		var seed = new SeedManiacsRuntimeModule(original);
 		var module = CreateModule(player, original);
 		var plan = new SetupPlan([seed, module]);
+		var defaults = NewProjectDefaults.FromIniOptions(true, true, true, true);
 
-		var install = await new InstallationCoordinator().InstallAsync(source, destination, plan, replaceExisting: false);
+		var install = await new InstallationCoordinator().InstallAsync(source, destination, plan, replaceExisting: false,
+			maniacsPackageDirectory: null, maniacsLicenseAccepted: false, projectDefaults: defaults);
 
 		Assert.Equal(original, await File.ReadAllBytesAsync(Path.Combine(destination, "RPG_RT.exe")));
 		Assert.Equal(player, await File.ReadAllBytesAsync(Path.Combine(destination, "Player.exe")));
+		var defaultsPath = Path.Combine(destination, "ArabicSupport", "new-project-defaults.ini");
+		Assert.Equal(defaults.ToIniBytes(), await File.ReadAllBytesAsync(defaultsPath));
 		Assert.False(File.Exists(Path.Combine(destination, "RPG_RT-Maniacs.exe")));
 		var installed = Assert.Single(install.State.Modules, item => item.Id == "easyrpg-arabic");
 		Assert.Equal("x64", installed.Architecture);
-		var owned = Assert.Single(installed.Files);
-		Assert.Equal("Player.exe", owned.RelativePath);
-		Assert.Equal(Hash(player), owned.Sha256);
+		Assert.Collection(installed.Files.OrderBy(file => file.RelativePath),
+			owned =>
+			{
+				Assert.Equal("ArabicSupport/new-project-defaults.ini", owned.RelativePath);
+				Assert.Equal(Hash(defaults.ToIniBytes()), owned.Sha256);
+			},
+			owned =>
+			{
+				Assert.Equal("Player.exe", owned.RelativePath);
+				Assert.Equal(Hash(player), owned.Sha256);
+			});
+		Assert.Equal(64, installed.ManifestHash.Length);
 		var persisted = await SetupStateStore.ReadAsync(destination);
 		Assert.Equal("x64", Assert.Single(persisted.Modules, item => item.Id == "easyrpg-arabic").Architecture);
 		Assert.Equal(vanillaExeHashBefore, Hash(await File.ReadAllBytesAsync(Path.Combine(source, "rpg2003.exe"))));
@@ -113,6 +126,7 @@ public sealed class EasyRpgArabicSetupModuleTests
 
 		Assert.Equal(original, await File.ReadAllBytesAsync(Path.Combine(context.StagingDirectory, "RPG_RT.exe")));
 		Assert.False(File.Exists(Path.Combine(context.StagingDirectory, "Player.exe")));
+		Assert.False(File.Exists(Path.Combine(context.StagingDirectory, "ArabicSupport", "new-project-defaults.ini")));
 		Assert.False(File.Exists(Path.Combine(context.StagingDirectory, "RPG_RT-Maniacs.exe")));
 	}
 
@@ -147,7 +161,7 @@ public sealed class EasyRpgArabicSetupModuleTests
 
 		Assert.Equal(original, await File.ReadAllBytesAsync(Path.Combine(context.StagingDirectory, "RPG_RT.exe")));
 		Assert.False(File.Exists(Path.Combine(context.StagingDirectory, "Player.exe")));
-		Assert.Equal(["Player.exe"], result.RemovedFiles);
+		Assert.Equal(new[] { "ArabicSupport/new-project-defaults.ini", "Player.exe" }, result.RemovedFiles.OrderBy(path => path).ToArray());
 		Assert.Empty(result.PreservedFiles);
 	}
 
