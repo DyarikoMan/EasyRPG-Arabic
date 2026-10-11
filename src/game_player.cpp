@@ -139,6 +139,74 @@ int Game_Player::GetAnimationSpeed() const {
 	return speed;
 }
 
+void Game_Player::UpdatePixelCameraFollow() {
+	if (!Player::project_settings.smooth_camera || !IsUsingPixelMovement()
+			|| IsPanLocked() || IsPanActive() || IsJumping() || IsMoveRouteOverwritten()) {
+		return;
+	}
+
+	int screen_offset_x = 0;
+	if (Player::game_config.fake_resolution.Get()) {
+		const int map_width_in_pixels = Game_Map::GetTilesX() * TILE_SIZE;
+		if (map_width_in_pixels < Player::screen_width) {
+			screen_offset_x = ((Player::screen_width - map_width_in_pixels) / 2 / TILE_SIZE) * SCREEN_TILE_SIZE;
+		}
+	}
+	int screen_offset_y = 0;
+	if (Player::game_config.fake_resolution.Get()) {
+		const int map_height_in_pixels = Game_Map::GetTilesY() * TILE_SIZE;
+		if (map_height_in_pixels < Player::screen_height) {
+			screen_offset_y = ((Player::screen_height - map_height_in_pixels) / 2 / TILE_SIZE) * SCREEN_TILE_SIZE;
+		}
+	}
+
+	auto dx = GetSpriteX() - GetPanX() + screen_offset_x - Game_Map::GetPositionX();
+	auto dy = GetSpriteY() - GetPanY() + screen_offset_y - Game_Map::GetPositionY();
+	const auto map_width = Game_Map::GetTilesX() * SCREEN_TILE_SIZE;
+	const auto map_height = Game_Map::GetTilesY() * SCREEN_TILE_SIZE;
+
+	if (Game_Map::LoopHorizontal()) {
+		dx = Utils::PositiveModulo(dx + map_width / 2, map_width) - map_width / 2;
+	}
+	if (Game_Map::LoopVertical()) {
+		dy = Utils::PositiveModulo(dy + map_height / 2, map_height) - map_height / 2;
+	}
+
+	// Keep a small fixed region around the player's follow point where the
+	// camera remains still. Outside it, target only the amount needed to bring
+	// the player back to the corresponding edge of the region.
+	constexpr int horizontal_dead_zone = 12 * SCREEN_TILE_SIZE / TILE_SIZE;
+	constexpr int vertical_dead_zone = 8 * SCREEN_TILE_SIZE / TILE_SIZE;
+	const auto apply_dead_zone = [](int delta, int radius) {
+		if (delta > radius) {
+			return delta - radius;
+		}
+		if (delta < -radius) {
+			return delta + radius;
+		}
+		return 0;
+	};
+	dx = apply_dead_zone(dx, horizontal_dead_zone);
+	dy = apply_dead_zone(dy, vertical_dead_zone);
+
+	// Let the map clamp camera movement on non-looping maps. This also adjusts
+	// the delta so the smoothing step cannot move past a map boundary.
+	if (!Game_Map::LoopHorizontal()) {
+		int target_x = Game_Map::GetPositionX();
+		Game_Map::AddScreenX(target_x, dx);
+	}
+	if (!Game_Map::LoopVertical()) {
+		int target_y = Game_Map::GetPositionY();
+		Game_Map::AddScreenY(target_y, dy);
+	}
+
+	const auto ease_toward_target = [](int delta) {
+		const int movement = delta / 4;
+		return movement != 0 ? movement : Utils::Signum(delta);
+	};
+	Game_Map::Scroll(ease_toward_target(dx), ease_toward_target(dy));
+}
+
 Drawable::Z_t Game_Player::GetScreenZ(int x_offset, int y_offset) const {
 	// Player is always "same layer as hero".
 	// When the Player is on the same Y-coordinate as an event the Player is always rendered first.
@@ -500,6 +568,7 @@ void Game_Player::Update() {
 	pixel_moved_this_frame = false;
 	pixel_running_this_frame = false;
 	Game_Character::Update();
+	UpdatePixelCameraFollow();
 
 	if (IsStopping()) {
 		if (data()->boarding) {
@@ -938,7 +1007,9 @@ bool Game_Player::UpdatePixelMovement(int dir) {
 	pixel_running_this_frame = pixel_moved_this_frame && running;
 
 	if (pixel_moved_this_frame) {
-		UpdateScroll(0, false, std::abs(pixel_x - starting_x), std::abs(pixel_y - starting_y));
+		if (!Player::project_settings.smooth_camera || IsPanLocked() || IsPanActive()) {
+			UpdateScroll(0, false, std::abs(pixel_x - starting_x), std::abs(pixel_y - starting_y));
+		}
 	}
 	return pixel_moved_this_frame;
 }

@@ -41,6 +41,7 @@ namespace Player {
 		bool eight_direction_movement = false;
 		bool pixel_movement = false;
 		bool run_with_shift = false;
+		bool smooth_camera = false;
 	};
 
 	/** Runtime settings for the currently loaded project. */
