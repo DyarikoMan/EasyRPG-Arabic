@@ -28,6 +28,10 @@ internal sealed class MainForm : Form
 	private readonly Button _installButton = new();
 	private readonly Button _advancedButton = new();
 	private readonly Panel _advancedPanel = new();
+	private readonly CheckBox _eightDirectionMovement = new();
+	private readonly CheckBox _pixelMovement = new();
+	private readonly CheckBox _runWithShift = new();
+	private readonly CheckBox _smoothCamera = new();
 	private readonly Panel _successPanel = new();
 	private readonly Label _successStatus = new();
 	private readonly TemporaryManiacsPackage? _embeddedManiacsPackage;
@@ -192,23 +196,38 @@ internal sealed class MainForm : Form
 			_maniacsPackageStatus.Size = new Size(640, 36);
 		}
 
+		var defaultsGroup = new GroupBox
+		{
+			Text = "New project defaults",
+			Location = new Point(8, 160),
+			Size = new Size(282, 178)
+		};
+		ConfigureMovementDefaultCheckBox(_eightDirectionMovement, "8-direction movement", 24);
+		ConfigureMovementDefaultCheckBox(_pixelMovement, "Pixel movement", 54);
+		ConfigureMovementDefaultCheckBox(_runWithShift, "Run with Shift", 84);
+		ConfigureMovementDefaultCheckBox(_smoothCamera, "Smooth camera", 114);
+		_pixelMovement.CheckedChanged += (_, _) => UpdatePixelMovementDependencies();
+		defaultsGroup.Controls.AddRange([_eightDirectionMovement, _pixelMovement, _runWithShift, _smoothCamera]);
+		_advancedPanel.Controls.Add(defaultsGroup);
+		UpdatePixelMovementDependencies();
+
 		_advancedPanel.Controls.Add(new Label
 		{
 			Text = "Selected modules",
 			Font = new Font(Font, FontStyle.Bold),
-			Location = new Point(8, 160),
-			Size = new Size(280, 22)
+			Location = new Point(300, 160),
+			Size = new Size(348, 22)
 		});
 		var modulePanel = new TableLayoutPanel
 		{
-			Location = new Point(8, 184),
-			Size = new Size(640, 154),
+			Location = new Point(300, 184),
+			Size = new Size(348, 154),
 			ColumnCount = 3,
 			RowCount = _modules.Count,
 			CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
 		};
-		modulePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
-		modulePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
+		modulePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 30));
+		modulePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 126));
 		modulePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 		for (var index = 0; index < _modules.Count; index++)
 		{
@@ -473,8 +492,35 @@ internal sealed class MainForm : Form
 		_installationProgress.Location = new Point(24, _advancedExpanded ? 650 : 278);
 	}
 
+	private static void ConfigureMovementDefaultCheckBox(CheckBox checkBox, string text, int top)
+	{
+		checkBox.Text = text;
+		checkBox.Location = new Point(12, top);
+		checkBox.Size = new Size(252, 24);
+		checkBox.Checked = false;
+	}
+
+	private void UpdatePixelMovementDependencies()
+	{
+		var pixelMovement = _pixelMovement.Checked;
+		_runWithShift.Enabled = pixelMovement;
+		_smoothCamera.Enabled = pixelMovement;
+		if (!pixelMovement)
+		{
+			_runWithShift.Checked = false;
+			_smoothCamera.Checked = false;
+		}
+	}
+
+	private NewProjectDefaults CaptureNewProjectDefaults() => NewProjectDefaults.FromIniOptions(
+		_eightDirectionMovement.Checked,
+		_pixelMovement.Checked,
+		_runWithShift.Checked,
+		_smoothCamera.Checked);
+
 	private async Task InstallRecommendedAsync()
 	{
+		var projectDefaults = CaptureNewProjectDefaults();
 		var source = _sourcePath.Text.Trim();
 		var validation = RpgMaker2003InstallationValidator.Validate(source);
 		if (!validation.IsValid)
@@ -577,7 +623,7 @@ internal sealed class MainForm : Form
 				_installationProgress.Value = Math.Clamp(update.Percent, 0, 100);
 			});
 			var result = await new InstallationCoordinator().InstallAsync(source, destination, plan, replaceExisting,
-				maniacsPackageDirectory, maniacsLicenseAccepted, progress: progress);
+				maniacsPackageDirectory, maniacsLicenseAccepted, progress: progress, projectDefaults: projectDefaults);
 			_successfulInstallDirectory = result.InstallationDirectory;
 			ShowSuccess();
 			_successStatus.Text = "Opening installation folder...";

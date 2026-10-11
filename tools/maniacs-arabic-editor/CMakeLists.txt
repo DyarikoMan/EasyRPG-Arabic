@@ -34,3 +34,16 @@ set_target_properties(EasyCmdTos minhook PROPERTIES
 	MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
 )
 set_target_properties(EasyCmdTos PROPERTIES PREFIX "" OUTPUT_NAME "EasyCmdTos")
+
+option(BUILD_PROJECT_RUNTIME_SUPPORT_HARNESS "Build the native project/player integration harness" OFF)
+if(BUILD_PROJECT_RUNTIME_SUPPORT_HARNESS)
+	add_executable(project_runtime_support_harness tests/project_runtime_support_harness.cpp)
+	target_compile_features(project_runtime_support_harness PRIVATE cxx_std_17)
+	target_include_directories(project_runtime_support_harness PRIVATE "${MINHOOK_DIR}/include")
+	target_compile_definitions(project_runtime_support_harness PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+	target_compile_options(project_runtime_support_harness PRIVATE /W4 /EHsc)
+	target_link_libraries(project_runtime_support_harness PRIVATE minhook)
+	set_target_properties(project_runtime_support_harness PROPERTIES
+		MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+	)
+endif()

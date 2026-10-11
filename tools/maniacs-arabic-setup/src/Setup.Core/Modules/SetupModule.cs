@@ -23,7 +23,8 @@ public sealed record SetupModuleContext(
 	string FinalDirectory,
 	string? ManiacsPackageDirectory = null,
 	bool ManiacsLicenseAccepted = false,
-	Action<string>? ReportStage = null);
+	Action<string>? ReportStage = null,
+	NewProjectDefaults? ProjectDefaults = null);
 
 public sealed record ModuleOwnedFile(string RelativePath, string Sha256);
 
