@@ -97,6 +97,11 @@ static void testMove(bool success, int input_dir, int dir, int x, int y, int dx,
 	}
 }
 
+static void positionCameraAtPlayerFollowTarget(Game_Player& player) {
+	Game_Map::SetPositionX(player.GetSpriteX() - player.GetPanX());
+	Game_Map::SetPositionY(player.GetSpriteY() - player.GetPanY());
+}
+
 TEST_CASE("Move") {
 	testMove(true, 8, Up, 4, 8, 0, -1, false, false);
 	testMove(true, 6, Right, 4, 8, 1, 0, false, false);
@@ -687,7 +692,7 @@ TEST_CASE("Pixel diagonal movement uses existing MakeWay corner routes") {
 
 TEST_CASE("Pixel player rendering and camera follow the continuous position") {
 	ProjectSettingsGuard settings_guard;
-	Player::project_settings = { false, true };
+	Player::project_settings = { false, true, false, false };
 	const MockGame mg(MockMap::ePass40x30);
 	auto& ch = *mg.GetPlayer();
 	ch.SetX(12);
@@ -700,6 +705,336 @@ TEST_CASE("Pixel player rendering and camera follow the continuous position") {
 
 	CHECK(ch.GetSpriteX() == 12 * SCREEN_TILE_SIZE + 16);
 	CHECK(Game_Map::GetPositionX() == camera_x + 16);
+}
+
+TEST_CASE("SmoothCamera leaves the camera still inside the dead zone") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, false, true };
+	const MockGame mg(MockMap::ePass40x30);
+	auto& ch = *mg.GetPlayer();
+	ch.MoveTo(1, 12, 8);
+	positionCameraAtPlayerFollowTarget(ch);
+	const auto camera_x = Game_Map::GetPositionX();
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::RIGHT;
+
+	for (int i = 0; i < 8; ++i) {
+		ForceUpdate(ch);
+	}
+
+	CHECK(ch.GetPixelX() == 12 * SCREEN_TILE_SIZE + 128);
+	CHECK(Game_Map::GetPositionX() == camera_x);
+
+	Input::dir4 = Input::Direction::NONE;
+	for (int i = 0; i < 10; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(Game_Map::GetPositionX() == camera_x);
+}
+
+TEST_CASE("SmoothCamera follows only enough to keep the player at the right dead-zone edge") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, false, true };
+	const MockGame mg(MockMap::ePass40x30);
+	auto& ch = *mg.GetPlayer();
+	ch.MoveTo(1, 12, 8);
+	positionCameraAtPlayerFollowTarget(ch);
+	const auto camera_x = Game_Map::GetPositionX();
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::RIGHT;
+	for (int i = 0; i < 12; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(Game_Map::GetPositionX() == camera_x);
+
+	ForceUpdate(ch);
+	CHECK(Game_Map::GetPositionX() == camera_x + 4);
+
+	Input::dir4 = Input::Direction::NONE;
+	for (int i = 0; i < 16; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(Game_Map::GetPositionX() == camera_x + 16);
+	CHECK(ch.GetSpriteX() - ch.GetPanX() - Game_Map::GetPositionX() == 12 * 16);
+}
+
+TEST_CASE("SmoothCamera follows left only after crossing the horizontal dead-zone edge") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, false, true };
+	const MockGame mg(MockMap::ePass40x30);
+	auto& ch = *mg.GetPlayer();
+	ch.MoveTo(1, 12, 8);
+	positionCameraAtPlayerFollowTarget(ch);
+	const auto camera_x = Game_Map::GetPositionX();
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::LEFT;
+	for (int i = 0; i < 12; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(Game_Map::GetPositionX() == camera_x);
+	ForceUpdate(ch);
+	CHECK(Game_Map::GetPositionX() == camera_x - 4);
+
+	Input::dir4 = Input::Direction::NONE;
+	for (int i = 0; i < 16; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(Game_Map::GetPositionX() == camera_x - 16);
+	CHECK(ch.GetSpriteX() - ch.GetPanX() - Game_Map::GetPositionX() == -12 * 16);
+}
+
+TEST_CASE("SmoothCamera follows above and below the vertical dead-zone edges") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, false, true };
+	const MockGame mg(MockMap::ePass40x30);
+	auto& ch = *mg.GetPlayer();
+	ch.MoveTo(1, 12, 8);
+	positionCameraAtPlayerFollowTarget(ch);
+	const auto camera_y = Game_Map::GetPositionY();
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::UP;
+	for (int i = 0; i < 8; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(Game_Map::GetPositionY() == camera_y);
+	ForceUpdate(ch);
+	CHECK(Game_Map::GetPositionY() == camera_y - 4);
+
+	ch.MoveTo(1, 12, 8);
+	const auto reset_camera_y = Game_Map::GetPositionY();
+	Input::dir4 = Input::Direction::DOWN;
+	for (int i = 0; i < 8; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(Game_Map::GetPositionY() == reset_camera_y);
+	ForceUpdate(ch);
+	CHECK(Game_Map::GetPositionY() == reset_camera_y + 4);
+}
+
+TEST_CASE("SmoothCamera integer easing converges to the dead-zone edge") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, false, true };
+	const MockGame mg(MockMap::ePass40x30);
+	auto& ch = *mg.GetPlayer();
+	ch.MoveTo(1, 12, 8);
+	const auto target_x = ch.GetSpriteX() - ch.GetPanX();
+	const auto target_y = ch.GetSpriteY() - ch.GetPanY();
+	Game_Map::SetPositionX(target_x - 12 * 16 - 2);
+	Game_Map::SetPositionY(target_y - 8 * 16 - 2);
+	Input::ResetKeys();
+
+	ForceUpdate(ch);
+	CHECK(Game_Map::GetPositionX() == target_x - 12 * 16 - 1);
+	CHECK(Game_Map::GetPositionY() == target_y - 8 * 16 - 1);
+
+	ForceUpdate(ch);
+	CHECK(Game_Map::GetPositionX() == target_x - 12 * 16);
+	CHECK(Game_Map::GetPositionY() == target_y - 8 * 16);
+}
+
+TEST_CASE("SmoothCamera follows both walking and Shift running movement") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, true, true };
+	const MockGame mg(MockMap::ePass40x30);
+	auto& ch = *mg.GetPlayer();
+	ch.MoveTo(1, 12, 8);
+	positionCameraAtPlayerFollowTarget(ch);
+	const auto camera_x = Game_Map::GetPositionX();
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::RIGHT;
+
+	for (int i = 0; i < 12; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(ch.GetPixelX() == 12 * SCREEN_TILE_SIZE + 192);
+	CHECK(Game_Map::GetPositionX() == camera_x);
+
+	Input::press_time[Input::SHIFT] = 1;
+	ForceUpdate(ch);
+	CHECK(ch.GetPixelX() == 12 * SCREEN_TILE_SIZE + 224);
+	CHECK(Game_Map::GetPositionX() == camera_x + 8);
+
+	Input::dir4 = Input::Direction::NONE;
+	Input::press_time[Input::SHIFT] = 0;
+	for (int i = 0; i < 16; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(Game_Map::GetPositionX() == camera_x + 32);
+	CHECK(ch.GetSpriteX() - ch.GetPanX() - Game_Map::GetPositionX() == 12 * 16);
+}
+
+TEST_CASE("SmoothCamera follows diagonal pixel movement on both axes") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { true, true, false, true };
+	const MockGame mg(MockMap::ePass40x30);
+	auto& ch = *mg.GetPlayer();
+	ch.MoveTo(1, 12, 8);
+	positionCameraAtPlayerFollowTarget(ch);
+	const auto camera_x = Game_Map::GetPositionX();
+	const auto camera_y = Game_Map::GetPositionY();
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::DOWN;
+	Input::dir8 = Input::Direction::UPRIGHT;
+
+	for (int i = 0; i < 12; ++i) {
+		ForceUpdate(ch);
+	}
+
+	CHECK(ch.GetPixelX() == 12 * SCREEN_TILE_SIZE + 192);
+	CHECK(ch.GetPixelY() == 8 * SCREEN_TILE_SIZE - 192);
+	CHECK(Game_Map::GetPositionX() == camera_x);
+	CHECK(Game_Map::GetPositionY() < camera_y);
+
+	ForceUpdate(ch);
+	CHECK(Game_Map::GetPositionX() == camera_x + 4);
+}
+
+TEST_CASE("SmoothCamera lets the player cross the dead zone before following a reversal") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, false, true };
+	const MockGame mg(MockMap::ePass40x30);
+	auto& ch = *mg.GetPlayer();
+	ch.MoveTo(1, 12, 8);
+	positionCameraAtPlayerFollowTarget(ch);
+	const auto camera_x = Game_Map::GetPositionX();
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::RIGHT;
+	for (int i = 0; i < 13; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(Game_Map::GetPositionX() == camera_x + 4);
+
+	Input::dir4 = Input::Direction::NONE;
+	for (int i = 0; i < 16; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(Game_Map::GetPositionX() == camera_x + 16);
+
+	Input::dir4 = Input::Direction::LEFT;
+	for (int i = 0; i < 24; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(Game_Map::GetPositionX() == camera_x + 16);
+	ForceUpdate(ch);
+	CHECK(Game_Map::GetPositionX() == camera_x + 12);
+}
+
+TEST_CASE("SmoothCamera snaps to the player on same-map teleport placement") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, false, true };
+	const MockGame mg(MockMap::ePass40x30);
+	auto& ch = *mg.GetPlayer();
+	ch.MoveTo(1, 12, 8);
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::RIGHT;
+	for (int i = 0; i < 16; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(Game_Map::GetPositionX() < ch.GetSpriteX() - ch.GetPanX());
+
+	ch.MoveTo(1, 20, 8);
+	const auto teleported_camera_x = Game_Map::GetPositionX();
+	const auto teleported_camera_y = Game_Map::GetPositionY();
+	CHECK(ch.GetPixelX() == 20 * SCREEN_TILE_SIZE);
+	CHECK(teleported_camera_x == ch.GetSpriteX() - ch.GetPanX());
+	CHECK(teleported_camera_y == ch.GetSpriteY() - ch.GetPanY());
+
+	Input::dir4 = Input::Direction::NONE;
+	ForceUpdate(ch);
+	CHECK(Game_Map::GetPositionX() == teleported_camera_x);
+	CHECK(Game_Map::GetPositionY() == teleported_camera_y);
+}
+
+TEST_CASE("SmoothCamera respects non-looping map edges") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, false, true };
+	const MockGame mg(MockMap::ePass40x30);
+	auto& ch = *mg.GetPlayer();
+	ch.SetX(39);
+	ch.SetY(8);
+	CHECK_FALSE(Game_Map::LoopHorizontal());
+	Game_Map::SetPositionX(INT_MAX);
+	const auto right_edge = Game_Map::GetPositionX();
+	Game_Map::SetPositionX(0);
+	Input::ResetKeys();
+
+	for (int i = 0; i < 40; ++i) {
+		ForceUpdate(ch);
+		CHECK(Game_Map::GetPositionX() >= 0);
+		CHECK(Game_Map::GetPositionX() <= right_edge);
+	}
+	CHECK(Game_Map::GetPositionX() == right_edge);
+}
+
+TEST_CASE("SmoothCamera follows across a looping map seam") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, false, true };
+	const MockGame mg(MockMap::ePass40x30);
+	auto& ch = *mg.GetPlayer();
+	ch.MoveTo(1, 9, 8);
+	auto& map = const_cast<lcf::rpg::Map&>(Game_Map::GetMap());
+	map.scroll_type = lcf::rpg::Map::ScrollType_horizontal;
+	CHECK(Game_Map::LoopHorizontal());
+	const auto map_width = Game_Map::GetTilesX() * SCREEN_TILE_SIZE;
+	const auto camera_before = map_width - 20 * 16;
+	Game_Map::SetPositionX(camera_before);
+	CHECK(Game_Map::GetPositionX() == camera_before);
+	CHECK(ch.GetSpriteX() - ch.GetPanX() == 0);
+	Input::ResetKeys();
+
+	ForceUpdate(ch);
+	CHECK(Game_Map::GetPositionX() == camera_before + 32);
+
+	for (int i = 0; i < 40; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(Game_Map::GetPositionX() == map_width - 12 * 16);
+
+	Input::dir4 = Input::Direction::RIGHT;
+	for (int i = 0; i < 32; ++i) {
+		ForceUpdate(ch);
+		CHECK(Game_Map::GetPositionX() >= 0);
+		CHECK(Game_Map::GetPositionX() < map_width);
+	}
+	Input::dir4 = Input::Direction::NONE;
+	for (int i = 0; i < 16; ++i) {
+		ForceUpdate(ch);
+	}
+	CHECK(Game_Map::GetPositionX() == 20 * 16);
+}
+
+TEST_CASE("SmoothCamera does not ease manual pan commands") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, true, false, true };
+	const MockGame mg(MockMap::ePass40x30);
+	auto& ch = *mg.GetPlayer();
+	ch.MoveTo(1, 12, 8);
+	positionCameraAtPlayerFollowTarget(ch);
+	const auto camera_x = Game_Map::GetPositionX();
+	ch.StartPan(Game_Player::PanRight, 1, 0);
+	Input::ResetKeys();
+
+	ForceUpdate(ch);
+
+	CHECK(ch.IsPanActive());
+	CHECK(Game_Map::GetPositionX() == camera_x + 2);
+}
+
+TEST_CASE("SmoothCamera does not alter camera following when pixel movement is disabled") {
+	ProjectSettingsGuard settings_guard;
+	Player::project_settings = { false, false, true, true };
+	const MockGame mg(MockMap::ePass40x30);
+	auto& ch = *mg.GetPlayer();
+	ch.MoveTo(1, 12, 8);
+	const auto camera_x = Game_Map::GetPositionX();
+	Input::ResetKeys();
+	Input::dir4 = Input::Direction::RIGHT;
+	Rand::LockGuard lk(INT32_MAX);
+
+	ForceUpdate(ch);
+
+	CHECK(ch.GetX() == 13);
+	CHECK(Game_Map::GetPositionX() == camera_x + (1 << (1 + ch.GetMoveSpeed())));
 }
 
 TEST_CASE("Pixel movement leaves NPC interpolation on the tile movement path") {
@@ -806,6 +1141,7 @@ TEST_CASE("Enabled eight-direction movement maps input directions and preserves 
 		Input::dir4 = Input::Direction::DOWN;
 		Input::dir8 = direction.input_direction;
 		const auto steps_before = Main_Data::game_party->GetSteps();
+		Rand::LockGuard lk(INT32_MAX);
 
 		ForceUpdate(ch);
 
@@ -833,6 +1169,7 @@ static void testDiagonalCollision(std::initializer_list<std::pair<int, int>> blo
 	Input::ResetKeys();
 	Input::dir4 = Input::Direction::UP;
 	Input::dir8 = Input::Direction::UPRIGHT;
+	Rand::LockGuard lk(INT32_MAX);
 
 	ForceUpdate(ch);
 

@@ -171,6 +171,7 @@ private:
 	void UpdateAnimation() override;
 	int GetAnimationSpeed() const override;
 	void UpdateScroll(int amount, bool was_jumping, int pixel_amount_x = -1, int pixel_amount_y = -1);
+	void UpdatePixelCameraFollow();
 	void SyncPixelPositionToTile();
 	bool IsUsingPixelMovement() const;
 	bool UpdatePixelMovement(int dir);
