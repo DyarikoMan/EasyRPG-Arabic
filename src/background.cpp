@@ -28,16 +28,15 @@
 #include "drawable_mgr.h"
 #include "game_screen.h"
 #include "player.h"
+#include "filefinder.h"
+#include "widescreen_asset.h"
 
 Background::Background(const std::string& name) : Drawable(Priority_Background)
 {
 	DrawableMgr::Register(this);
 
 	if (!name.empty()) {
-		FileRequestAsync* request = AsyncHandler::RequestFile("Backdrop", name);
-		request->SetGraphicFile(true);
-		bg_request_id = request->Bind(&Background::OnBackgroundGraphicReady, this);
-		request->Start();
+		RequestGraphic("Backdrop", name, false);
 	}
 }
 
@@ -54,46 +53,73 @@ Background::Background(int terrain_id) : Drawable(Priority_Background)
 
 	// Either background or frame
 	if (terrain->background_type == lcf::rpg::Terrain::BGAssociation_background && !terrain->background_name.empty()) {
-		FileRequestAsync* request = AsyncHandler::RequestFile("Backdrop", terrain->background_name);
-		request->SetGraphicFile(true);
-		bg_request_id = request->Bind(&Background::OnBackgroundGraphicReady, this);
-		request->Start();
+		RequestGraphic("Backdrop", ToString(terrain->background_name), false);
 		return;
 	}
 
 	// Frame
 	if (!terrain->background_a_name.empty()) {
-		FileRequestAsync* request = AsyncHandler::RequestFile("Frame", terrain->background_a_name);
-		request->SetGraphicFile(true);
-		bg_request_id = request->Bind(&Background::OnBackgroundGraphicReady, this);
-		request->Start();
+		RequestGraphic("Frame", ToString(terrain->background_a_name), false);
 
 		bg_hscroll = terrain->background_a_scrollh ? terrain->background_a_scrollh_speed : 0;
 		bg_vscroll = terrain->background_a_scrollv ? terrain->background_a_scrollv_speed : 0;
 	}
 
 	if (terrain->background_b && !terrain->background_b_name.empty()) {
-		FileRequestAsync* request = AsyncHandler::RequestFile("Frame", terrain->background_b_name);
-		request->SetGraphicFile(true);
-		fg_request_id = request->Bind(&Background::OnForegroundFrameGraphicReady, this);
-		request->Start();
+		RequestGraphic("Frame", ToString(terrain->background_b_name), true);
 
 		fg_hscroll = terrain->background_b_scrollh ? terrain->background_b_scrollh_speed : 0;
 		fg_vscroll = terrain->background_b_scrollv ? terrain->background_b_scrollv_speed : 0;
 	}
 }
 
-void Background::OnBackgroundGraphicReady(FileRequestResult* result) {
+void Background::RequestGraphic(const std::string& directory, const std::string& original_name, bool foreground, bool allow_wide) {
+	const bool wide_candidate = allow_wide && WidescreenAsset::ShouldTryWide(Player::screen_width);
+	const std::string name = wide_candidate ? WidescreenAsset::MakeWideSibling(original_name) : original_name;
+	FileRequestAsync* request = AsyncHandler::RequestFile(directory, name);
+	request->SetGraphicFile(true);
+	if (foreground) {
+		fg_request_id = request->Bind(&Background::OnForegroundFrameGraphicReady, this, std::string(original_name), wide_candidate);
+	} else {
+		bg_request_id = request->Bind(&Background::OnBackgroundGraphicReady, this, std::string(original_name), wide_candidate);
+	}
+	request->Start();
+}
+
+void Background::OnBackgroundGraphicReady(FileRequestResult* result, std::string original_name, bool wide_candidate) {
+	bool wide_asset = false;
+	if (wide_candidate) {
+		const bool wide_available = result->success && static_cast<bool>(FileFinder::OpenImage(result->directory, result->file));
+		if (WidescreenAsset::SelectName(original_name, Player::screen_width, wide_available) == original_name) {
+			RequestGraphic(result->directory, original_name, false, false);
+			return;
+		}
+		wide_asset = true;
+	}
+
 	if (result->directory == "Backdrop") {
 		bg_bitmap = Cache::Backdrop(result->file);
+		bg_wide = wide_asset;
 	}
 	else if (result->directory == "Frame") {
 		bg_bitmap = Cache::Frame(result->file, false);
+		bg_wide = wide_asset;
 	}
 }
 
-void Background::OnForegroundFrameGraphicReady(FileRequestResult* result) {
+void Background::OnForegroundFrameGraphicReady(FileRequestResult* result, std::string original_name, bool wide_candidate) {
+	bool wide_asset = false;
+	if (wide_candidate) {
+		const bool wide_available = result->success && static_cast<bool>(FileFinder::OpenImage(result->directory, result->file));
+		if (WidescreenAsset::SelectName(original_name, Player::screen_width, wide_available) == original_name) {
+			RequestGraphic(result->directory, original_name, true, false);
+			return;
+		}
+		wide_asset = true;
+	}
+
 	fg_bitmap = Cache::Frame(result->file);
+	fg_wide = wide_asset;
 }
 
 void Background::Update(int& rate, int& value) {
@@ -116,29 +142,63 @@ int Background::Scale(int x) {
 }
 
 void Background::Draw(Bitmap& dst) {
-	Rect dst_rect = dst.GetRect();
+	Rect bg_dst_rect = dst.GetRect();
+	Rect fg_dst_rect = bg_dst_rect;
+	if (!bg_wide && !fg_wide) {
+		// Preserve the existing classic background layout.
+		BitmapRef center_bitmap = bg_bitmap ? bg_bitmap : fg_bitmap;
+		if (center_bitmap) {
+			if (center_bitmap->GetWidth() < Player::screen_width) {
+				bg_dst_rect.x += Player::menu_offset_x;
+				bg_dst_rect.width = MENU_WIDTH;
+			}
+			if (center_bitmap->GetHeight() < Player::screen_height) {
+				bg_dst_rect.y += Player::menu_offset_y;
+				bg_dst_rect.height = MENU_HEIGHT;
+			}
+		}
+		fg_dst_rect = bg_dst_rect;
+	} else {
+		const auto get_destination_rect = [this, &dst](const BitmapRef& bitmap, bool wide_asset) {
+			Rect rect = dst.GetRect();
+			if (bitmap && bitmap->GetWidth() < Player::screen_width) {
+				if (wide_asset) {
+					rect.x += (Player::screen_width - bitmap->GetWidth()) / 2;
+					rect.width = bitmap->GetWidth();
+				} else {
+					rect.x += Player::menu_offset_x;
+					rect.width = MENU_WIDTH;
+				}
+			}
+			if (bitmap && bitmap->GetHeight() < Player::screen_height) {
+				if (wide_asset) {
+					rect.y += (Player::screen_height - bitmap->GetHeight()) / 2;
+					rect.height = bitmap->GetHeight();
+				} else {
+					rect.y += Player::menu_offset_y;
+					rect.height = MENU_HEIGHT;
+				}
+			}
+			rect.x += Main_Data::game_screen->GetShakeOffsetX();
+			rect.y += Main_Data::game_screen->GetShakeOffsetY();
+			return rect;
+		};
 
-	// If the background doesn't fill the screen, center it to support custom resolutions
-	BitmapRef center_bitmap = bg_bitmap ? bg_bitmap : fg_bitmap;
-	if (center_bitmap) {
-		if (center_bitmap->GetWidth() < Player::screen_width) {
-			dst_rect.x += Player::menu_offset_x;
-			dst_rect.width = MENU_WIDTH;
-		}
-		if (center_bitmap->GetHeight() < Player::screen_height) {
-			dst_rect.y += Player::menu_offset_y;
-			dst_rect.height = MENU_HEIGHT;
-		}
+		bg_dst_rect = get_destination_rect(bg_bitmap, bg_wide);
+		fg_dst_rect = get_destination_rect(fg_bitmap, fg_wide);
 	}
 
-	dst_rect.x += Main_Data::game_screen->GetShakeOffsetX();
-	dst_rect.y += Main_Data::game_screen->GetShakeOffsetY();
+	if (!bg_wide && !fg_wide) {
+		bg_dst_rect.x += Main_Data::game_screen->GetShakeOffsetX();
+		bg_dst_rect.y += Main_Data::game_screen->GetShakeOffsetY();
+		fg_dst_rect = bg_dst_rect;
+	}
 
 	if (bg_bitmap)
-		dst.TiledBlit(-Scale(bg_x), -Scale(bg_y), bg_bitmap->GetRect(), *bg_bitmap, dst_rect, 255);
+		dst.TiledBlit(-Scale(bg_x), -Scale(bg_y), bg_bitmap->GetRect(), *bg_bitmap, bg_dst_rect, 255);
 
 	if (fg_bitmap)
-		dst.TiledBlit(-Scale(fg_x), -Scale(fg_y), fg_bitmap->GetRect(), *fg_bitmap, dst_rect, 255);
+		dst.TiledBlit(-Scale(fg_x), -Scale(fg_y), fg_bitmap->GetRect(), *fg_bitmap, fg_dst_rect, 255);
 
 	if (tone_effect != Tone()) {
 		dst.ToneBlit(0, 0, dst, dst.GetRect(), tone_effect, Opacity::Opaque());
